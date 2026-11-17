@@ -265,7 +265,15 @@ input, select, textarea { font: inherit; font-size: 16px; color: inherit; }
 .cg-item.on { border-color: var(--c); background: var(--c); color: #fff; font-weight: 600; }
 .cg-item.gerir { border-style: dashed; color: var(--tinta-2); }
 .cg-item.gerir i { color: var(--perigo); }
-.cg-fundo { margin-top: 18px; }
+.cg-item.ja { border-color: transparent; background: transparent; color: var(--tinta-3); }
+.cg-item small { font-size: 12px; }
+.cg-fundo {
+    position: sticky; bottom: 0; z-index: 2; margin: 14px -18px 0;
+    padding: 10px 18px calc(12px + env(safe-area-inset-bottom));
+    background: var(--fundo); border-top: 1px solid var(--linha);
+}
+.cg-fundo .btn { margin-top: 0; }
+.btn-discreto { background: transparent; color: var(--tinta-2); font-weight: 550; font-size: 14.5px; margin-top: 2px; }
 
 /* ── Folha (bottom sheet) ── */
 .folha-fundo {

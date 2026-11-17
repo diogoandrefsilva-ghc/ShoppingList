@@ -755,10 +755,12 @@ async function limparTratados(listaId) {
 }
 
 /* ── CATÁLOGO: adicionar sem escrever ────────── */
-// Folha com os artigos conhecidos, por categoria: um toque põe o artigo na
-// lista de destino, outro toque tira-o (se ainda estiver por tratar). O
-// catálogo cresce sozinho — tudo o que se escreve na barra entra cá.
+// Folha com os artigos conhecidos, por categoria. Tocar só ESCOLHE (marca e
+// desmarca, nada é gravado); o botão do fundo adiciona os escolhidos todos de
+// uma vez à lista de destino. Fechar a folha sem carregar nele desiste.
+// O catálogo cresce sozinho — tudo o que se escreve na barra entra cá.
 let _catAberto = false, _catGerir = false;
+let _catSel = new Set();   // artigo_key dos escolhidos nesta abertura da folha
 
 function registarNoCatalogo(nome) {
     const k = artKey(nome);
@@ -768,14 +770,15 @@ function registarNoCatalogo(nome) {
 }
 function abrirCatalogo() {
     _catGerir = false;
+    _catSel = new Set();
     abrirFolha('Adicionar artigos', `
         <div id="cg-destinos" class="cg-destinos"></div>
         <input id="cg-busca" class="campo cg-busca" type="search" placeholder="Procurar…" autocomplete="off" autocapitalize="off" oninput="renderCatalogo()" aria-label="Procurar artigo">
         <div id="cg-grupos"></div>
         <div class="cg-fundo">
-            <button class="btn btn-primario" onclick="fecharFolha()">Feito</button>
-            <button id="cg-gerir" class="btn btn-contorno" onclick="alternarGerirCatalogo()"></button>
-        </div>`);
+            <button id="cg-ok" class="btn btn-primario" onclick="confirmarCatalogo()"></button>
+        </div>
+        <button id="cg-gerir" class="btn btn-discreto" onclick="alternarGerirCatalogo()"></button>`);
     _catAberto = true;
     renderCatalogo();
 }
@@ -795,8 +798,8 @@ function renderCatalogo() {
     const abertas = listasAbertas();
     $('cg-destinos').innerHTML = abertas.length > 1
         ? abertas.map((l) => `<button class="cg-dest ${corDe(l)} ${l.id === dest.id ? 'ativo' : ''}" onclick="escolherDestinoCatalogo(${l.id})">${esc(l.emoji)} ${esc(l.nome)}</button>`).join('')
-        : `<p class="nota topo-nota">Toca num artigo para o pôr em ${esc(dest.emoji)} ${esc(dest.nome)}.</p>`;
-    $('cg-gerir').textContent = _catGerir ? 'Voltar a adicionar' : 'Tirar artigos desta folha';
+        : `<p class="nota topo-nota">Escolhe os artigos e adiciona-os de uma vez a ${esc(dest.emoji)} ${esc(dest.nome)}.</p>`;
+    $('cg-gerir').textContent = _catGerir ? 'Voltar a escolher' : 'Tirar artigos desta folha';
 
     const naLista = new Set(artigosDe(dest.id).filter((a) => !a.tratado).map((a) => artKey(a.nome)));
     const busca = artKey($('cg-busca').value);
@@ -811,8 +814,10 @@ function renderCatalogo() {
         .sort((x, y) => (!x.cat) - (!y.cat) || (x.cat && y.cat ? x.cat.nome.localeCompare(y.cat.nome, 'pt') : 0))
         .map((g) => `<h3 class="cg-cat"><span>${g.cat ? catEmoji(g.cat.nome) : '📦'}</span>${esc(g.cat ? g.cat.nome : 'Sem categoria')}</h3>
             <div class="cg-itens">${g.itens.sort((a, b) => a.nome.localeCompare(b.nome, 'pt')).map((c) => {
-                const on = naLista.has(c.artigo_key);
-                return `<button class="cg-item ${corDe(dest)} ${on && !_catGerir ? 'on' : ''} ${_catGerir ? 'gerir' : ''}" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-pressed="${on}">${_catGerir ? '<i>×</i>' : (on ? '<i>✓</i>' : '')}${esc(c.nome)}</button>`;
+                const ja = naLista.has(c.artigo_key), on = !ja && _catSel.has(c.artigo_key);
+                if (_catGerir) return `<button class="cg-item gerir" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-label="Tirar ${esc(c.nome)} dos artigos conhecidos"><i>×</i>${esc(c.nome)}</button>`;
+                if (ja) return `<button class="cg-item ja" disabled><i>✓</i>${esc(c.nome)}<small>na lista</small></button>`;
+                return `<button class="cg-item ${corDe(dest)} ${on ? 'on' : ''}" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-pressed="${on}">${on ? '<i>✓</i>' : ''}${esc(c.nome)}</button>`;
             }).join('')}</div>`).join('');
     const escrito = $('cg-busca').value.trim();
     if (escrito && !estado.catalogo.some((c) => c.artigo_key === busca)) {
@@ -821,6 +826,24 @@ function renderCatalogo() {
         h = '<p class="nota">Ainda não há artigos conhecidos. Escreve na barra de baixo e eles aparecem aqui.</p>';
     }
     gr.innerHTML = h;
+
+    // Botão do fundo: conta só os escolhidos que ainda não estão na lista de destino
+    const n = [..._catSel].filter((k) => !naLista.has(k)).length;
+    const ok = $('cg-ok');
+    ok.hidden = _catGerir;
+    ok.disabled = !n;
+    ok.textContent = n ? `Adicionar ${n} ${n === 1 ? 'artigo' : 'artigos'} a ${dest.nome}` : 'Toca nos artigos para escolher';
+}
+async function confirmarCatalogo() {
+    const dest = destinoAtual();
+    if (!dest) return;
+    const naLista = new Set(artigosDe(dest.id).filter((a) => !a.tratado).map((a) => artKey(a.nome)));
+    const nomes = estado.catalogo.filter((c) => _catSel.has(c.artigo_key) && !naLista.has(c.artigo_key)).map((c) => c.nome);
+    if (!nomes.length) return;
+    _catSel = new Set();
+    fecharFolha();
+    toast(nomes.length === 1 ? `"${nomes[0]}" adicionado a ${dest.nome}.` : `${nomes.length} artigos adicionados a ${dest.nome}.`);
+    await Promise.all(nomes.map((n) => adicionarArtigo(dest.id, n, null)));
 }
 async function tocarCatalogo(k) {
     const c = estado.catalogo.find((x) => x.artigo_key === k);
@@ -833,19 +856,7 @@ async function tocarCatalogo(k) {
         catch (e) { estado.catalogo.push(c); renderCatalogo(); toast('Não foi retirado: ' + e.message, true); }
         return;
     }
-    const naLista = artigosDe(dest.id).find((a) => !a.tratado && artKey(a.nome) === k);
-    if (naLista) {
-        if (naLista.id < 0) return;            // ainda a gravar
-        const antes = estado.artigos.slice();
-        estado.artigos = estado.artigos.filter((a) => a !== naLista);
-        render(); renderCatalogo();
-        try { await api(`artigos?id=eq.${naLista.id}`, { method: 'DELETE', prefer: 'return=minimal' }); guardarCache(); }
-        catch (e) { estado.artigos = antes; render(); renderCatalogo(); toast('Não foi retirado: ' + e.message, true); }
-        return;
-    }
-    const p = adicionarArtigo(dest.id, c.nome, null);
-    renderCatalogo();
-    await p;
+    if (_catSel.has(k)) _catSel.delete(k); else _catSel.add(k);
     renderCatalogo();
 }
 async function adicionarDaBusca() {
