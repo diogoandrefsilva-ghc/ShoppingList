@@ -2,7 +2,7 @@
    Compras — listas de compras partilhadas lá de casa.
    Sem build, sem dependências. Supabase por REST (schema `shoppinglist`).
    Secções: Utilitários · Supabase (sessão, fetch) · Login & acesso ·
-   Dados (carregar, refresco) · Render · Artigos · Listas · Folhas ·
+   Categorias · Dados (carregar, refresco) · Render · Artigos · Listas · Folhas ·
    Definições & admin · Arranque
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -23,6 +23,8 @@ const estado = {
     destino: null,     // id da lista onde a barra de adicionar escreve
     tratadosAbertos: {},  // id da lista → mostrar os tratados
     pedidos: [],       // pedidos de acesso (só admin)
+    categorias: [],    // dicionário [{id,nome}], por ordem alfabética
+    artCats: {},       // memória artigo→categoria: artKey(nome) → id da categoria
 };
 
 /* ── UTILITÁRIOS ─────────────────────────────── */
@@ -62,6 +64,68 @@ function separarQtd(texto) {
     return { nome: t, qtd: null };
 }
 function maiuscula(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+/* ── CATEGORIAS DE ARTIGOS ───────────────────── */
+// Como no FestasBV: um dicionário (estado.categorias) e uma memória
+// artigo→categoria (estado.artCats) com chave = nome normalizado. A categoria
+// NÃO se guarda no artigo: lê-se da memória a cada render, por isso classificar
+// "Leite" uma vez vale para todas as listas, de agora em diante.
+function artKey(s) { return (s || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' '); }
+function singular(p) { return p.length > 3 ? p.replace(/(oes|aes)$/, 'ao').replace(/s$/, '') : p; }
+function catPorId(id) { return estado.categorias.find((c) => c.id === id) || null; }
+function catEmoji(nome) {
+    const k = artKey(nome);
+    const MAPA = [[/(nao alcool|sumo|refriger|agua)/, '🥤'], [/(branca|espirituos|whisky|gin|licor)/, '🥃'], [/(cerveja|sidra|vinho)/, '🍺'],
+        [/churrasc/, '🔥'], [/(utensilios cozinha)/, '🔪'], [/(refeicao|descart)/, '🍽️'], [/(talho|carne)/, '🥩'], [/(peix|marisc)/, '🐟'],
+        [/charcut/, '🥓'], [/(latic|leite)/, '🥛'], [/(padaria|pao)/, '🥖'], [/fruta/, '🍎'], [/(legume|vegeta)/, '🥕'],
+        [/(molho|tempero)/, '🧂'], [/conserva/, '🥫'], [/(acompanh|batata|snack)/, '🍚'], [/(sobremesa|doce)/, '🍰'],
+        [/(entrada|petisco|queijo)/, '🧀'], [/cafe/, '☕'], [/congelad/, '🧊'], [/mercearia/, '🥣'], [/higiene/, '🧴'],
+        [/limpeza/, '🧽'], [/(bricolagem|obra|ferrament)/, '🛠️'], [/(animal|animais)/, '🐾'], [/(farmacia|saude)/, '💊'], [/bebe/, '🍼']];
+    for (const [re, e] of MAPA) if (re.test(k)) return e;
+    return '🏷️';
+}
+// Índices para adivinhar a categoria de um artigo que ainda não está na memória:
+// pelo nome no singular ("cebola" ↔ "cebolas") e, à falta disso, pela primeira
+// palavra ("batata doce" → onde está a maioria das "batata …").
+let _catIdx = null;
+function catIndices() {
+    if (_catIdx) return _catIdx;
+    const sing = {}, prim = {};
+    Object.keys(estado.artCats).forEach((k) => {
+        const cid = estado.artCats[k], pal = k.split(' ').map(singular);
+        if (!(pal.join(' ') in sing)) sing[pal.join(' ')] = cid;
+        if (pal[0].length >= 3) { (prim[pal[0]] = prim[pal[0]] || {})[cid] = (prim[pal[0]][cid] || 0) + 1; }
+    });
+    return (_catIdx = { sing, prim });
+}
+// → { cat, certa }: certa=false quando é um palpite (ainda não está na memória)
+function catDe(nome) {
+    const k = artKey(nome);
+    if (!k || !estado.categorias.length) return { cat: null, certa: false };
+    if (estado.artCats[k] != null) return { cat: catPorId(estado.artCats[k]), certa: true };
+    const { sing, prim } = catIndices();
+    const pal = k.split(' ').map(singular);
+    let cid = sing[pal.join(' ')];
+    if (cid == null && prim[pal[0]]) cid = Number(Object.keys(prim[pal[0]]).sort((a, b) => prim[pal[0]][b] - prim[pal[0]][a])[0]);
+    return { cat: cid != null ? catPorId(cid) : null, certa: false };
+}
+async function definirCategoria(nome, catId) {
+    const k = artKey(nome);
+    if (!k) return;
+    const antes = estado.artCats[k];
+    if ((antes == null ? null : antes) === (catId || null)) return;
+    if (catId) estado.artCats[k] = catId; else delete estado.artCats[k];
+    _catIdx = null;
+    try {
+        if (catId) await api('artigo_categorias?on_conflict=artigo_key', { method: 'POST', body: { artigo_key: k, categoria_id: catId, origem: 'manual', atualizado_em: new Date().toISOString() }, prefer: 'resolution=merge-duplicates,return=minimal' });
+        else await api(`artigo_categorias?artigo_key=eq.${encodeURIComponent(k)}`, { method: 'DELETE', prefer: 'return=minimal' });
+        guardarCache();
+    } catch (e) {
+        if (antes == null) delete estado.artCats[k]; else estado.artCats[k] = antes;
+        _catIdx = null;
+        toast('Categoria não guardada: ' + e.message, true);
+    }
+}
 
 /* ── SUPABASE: sessão e fetch ────────────────── */
 let _sessao = null;
@@ -329,7 +393,7 @@ function guardarCache() {
     try {
         localStorage.setItem(CACHE_KEY, JSON.stringify({
             listas: estado.listas, artigos: estado.artigos.filter((a) => a.id > 0), perfis: estado.perfis,
-            destino: estado.destino, filtro: estado.filtro
+            destino: estado.destino, filtro: estado.filtro, categorias: estado.categorias, artCats: estado.artCats
         }));
     } catch (e) {}
 }
@@ -339,6 +403,7 @@ function carregarCache() {
         if (!c || !Array.isArray(c.listas)) return false;
         estado.listas = c.listas; estado.artigos = c.artigos || []; estado.perfis = c.perfis || {};
         estado.destino = c.destino || null; estado.filtro = c.filtro || 'tudo';
+        estado.categorias = c.categorias || []; estado.artCats = c.artCats || {}; _catIdx = null;
         return true;
     } catch (e) { return false; }
 }
@@ -349,10 +414,13 @@ async function carregarDados(silencioso) {
     if (_aCarregar) return;
     _aCarregar = true;
     try {
-        const [listas, artigos, perfis] = await Promise.all([
+        // As categorias são tolerantes: se falharem, a lista aparece na mesma (sem grupos).
+        const [listas, artigos, perfis, cats, artCats] = await Promise.all([
             api('listas?select=*&order=fixa.desc,criado_em.asc'),
             api('artigos?select=*&order=criado_em.asc'),
             api('perfis?select=email,nome'),
+            api('categorias?select=id,nome').catch(() => null),
+            api('artigo_categorias?select=artigo_key,categoria_id&limit=5000').catch(() => null),
         ]);
         // Uma escrita que começou entretanto ganha: o que veio do servidor é de antes dela.
         if (_escritas > 0) return;
@@ -360,6 +428,12 @@ async function carregarDados(silencioso) {
         estado.artigos = artigos || [];
         estado.perfis = {};
         (perfis || []).forEach((p) => { estado.perfis[p.email.toLowerCase()] = p.nome; });
+        if (cats && artCats) {
+            estado.categorias = cats.sort((a, b) => a.nome.localeCompare(b.nome, 'pt'));
+            estado.artCats = {};
+            artCats.forEach((r) => { estado.artCats[r.artigo_key] = r.categoria_id; });
+            _catIdx = null;
+        }
         sinalSync('');
         guardarCache();
         render();
@@ -479,7 +553,7 @@ function renderLista(l) {
     if (!arts.length) {
         h += `<p class="lista-vazia">${l.fixa ? 'Não falta nada em casa. Quando faltar, escreve em baixo.' : 'Lista vazia. Escreve em baixo o que é preciso comprar.'}</p>`;
     } else {
-        h += `<ul class="artigos">${falta.map(renderArtigo).join('')}</ul>`;
+        h += `<ul class="artigos">${renderPorCategoria(falta)}</ul>`;
         if (!falta.length && !l.fixa) {
             h += `<div class="tudo-ok"><span>Está tudo comprado 🎉</span><button class="btn-mini" onclick="concluirLista(${l.id})">Concluir lista</button></div>`;
         } else if (!falta.length) {
@@ -497,6 +571,23 @@ function renderLista(l) {
         if (aberto) h += `<ul class="artigos tratados">${tratados.map(renderArtigo).join('')}</ul>`;
     }
     return h + '</section>';
+}
+
+// Por tratar, agrupados por categoria (ordem alfabética; sem categoria no fim).
+// Sem nenhum artigo classificado não há cabeçalhos: fica a lista simples.
+function renderPorCategoria(arts) {
+    const grupos = new Map();
+    arts.forEach((a) => {
+        const c = catDe(a.nome).cat;
+        const k = c ? c.id : 0;
+        if (!grupos.has(k)) grupos.set(k, { cat: c, arts: [] });
+        grupos.get(k).arts.push(a);
+    });
+    if (grupos.size === 1 && grupos.has(0)) return arts.map(renderArtigo).join('');
+    return [...grupos.values()]
+        .sort((x, y) => (!x.cat) - (!y.cat) || (x.cat && y.cat ? x.cat.nome.localeCompare(y.cat.nome, 'pt') : 0))
+        .map((g) => `<li class="grupo"><span>${g.cat ? catEmoji(g.cat.nome) : '📦'}</span>${esc(g.cat ? g.cat.nome : 'Sem categoria')}</li>` + g.arts.map(renderArtigo).join(''))
+        .join('');
 }
 
 function renderArtigo(a) {
@@ -604,12 +695,18 @@ function abrirArtigo(id) {
     const a = estado.artigos.find((x) => x.id === id);
     if (!a || a.id < 0) return;
     const outras = listasAbertas();
+    const { cat, certa } = catDe(a.nome);
     abrirFolha('Artigo', `
         <form onsubmit="guardarArtigo(${a.id}); return false;">
             <label class="rotulo" for="ea-nome">Nome</label>
             <input id="ea-nome" class="campo" type="text" maxlength="120" value="${esc(a.nome)}" required autocomplete="off">
             <label class="rotulo" for="ea-qtd">Quantidade <span>(opcional)</span></label>
             <input id="ea-qtd" class="campo" type="text" maxlength="30" value="${esc(a.qtd || '')}" placeholder="ex.: 2, 500 g, 1 pacote" autocomplete="off">
+            ${estado.categorias.length ? `<label class="rotulo" for="ea-cat">Categoria ${cat && !certa ? '<span>(palpite — guarda para confirmar)</span>' : ''}</label>
+            <select id="ea-cat" class="campo">
+                <option value="">— sem categoria —</option>
+                ${estado.categorias.map((c) => `<option value="${c.id}" ${cat && cat.id === c.id ? 'selected' : ''}>${catEmoji(c.nome)} ${esc(c.nome)}</option>`).join('')}
+            </select>` : ''}
             <label class="rotulo" for="ea-lista">Lista</label>
             <select id="ea-lista" class="campo">
                 ${outras.map((l) => `<option value="${l.id}" ${l.id === a.lista_id ? 'selected' : ''}>${esc(l.emoji)} ${esc(l.nome)}</option>`).join('')}
@@ -625,9 +722,13 @@ async function guardarArtigo(id) {
     const nome = $('ea-nome').value.trim();
     if (!nome) return;
     const corpo = { nome, qtd: $('ea-qtd').value.trim() || null, lista_id: Number($('ea-lista').value) };
+    const sc = $('ea-cat');
+    const catId = sc ? (Number(sc.value) || null) : undefined;
     const antes = { ...a };
     Object.assign(a, corpo);
     fecharFolha();
+    // A categoria fica na memória pelo nome (novo, se mudou): vale para todas as listas.
+    if (catId !== undefined) definirCategoria(nome, catId);
     render();
     try {
         await api(`artigos?id=eq.${id}`, { method: 'PATCH', body: corpo, prefer: 'return=minimal' });
@@ -850,6 +951,8 @@ async function abrirDefinicoes() {
                 <button class="btn-mini discreto" onclick="apagarLista(${l.id})" aria-label="Apagar ${esc(l.nome)}">Apagar</button></li>`;
         }).join('')}</ul>` : '<p class="nota">Ainda não há listas concluídas.</p>'}`;
 
+    if (isAdmin() && estado.categorias.length) h += `<h3 class="sec">Categorias de artigos</h3>
+        <button class="btn btn-contorno sem-margem" onclick="abrirCategorias()">Gerir as ${estado.categorias.length} categorias</button>`;
     if (isAdmin()) h += `<h3 class="sec">Pedidos de acesso</h3><div id="df-pedidos"><p class="nota">A carregar…</p></div>
                          <h3 class="sec">Quem tem acesso</h3><div id="df-acessos"><p class="nota">A carregar…</p></div>`;
 
@@ -857,6 +960,63 @@ async function abrirDefinicoes() {
           <button class="btn btn-perigo" onclick="logout()">Terminar sessão</button>`;
     abrirFolha('Definições', h);
     if (isAdmin()) renderAdmin();
+}
+function abrirCategorias() {
+    const n = {};
+    Object.values(estado.artCats).forEach((cid) => { n[cid] = (n[cid] || 0) + 1; });
+    abrirFolha('Categorias', `
+        <p class="nota topo-nota">Agrupam os artigos nas listas. A categoria de cada artigo muda-se no próprio artigo (⋮) e fica memorizada para a próxima vez.</p>
+        <ul class="hist">${estado.categorias.map((c) => `<li>
+            <span class="hist-e">${catEmoji(c.nome)}</span>
+            <span class="hist-t"><b>${esc(c.nome)}</b><small>${n[c.id] || 0} ${n[c.id] === 1 ? 'artigo conhecido' : 'artigos conhecidos'}</small></span>
+            <button class="btn-mini" onclick="abrirCategoria(${c.id})">Editar</button></li>`).join('')}</ul>
+        <button class="btn btn-primario" onclick="abrirCategoria(null)">Nova categoria</button>
+        <button class="btn btn-contorno" onclick="abrirDefinicoes()">Voltar</button>`);
+}
+function abrirCategoria(id) {
+    const c = id != null ? catPorId(id) : null;
+    abrirFolha(c ? 'Editar categoria' : 'Nova categoria', `
+        <form onsubmit="guardarCategoria(${c ? c.id : 'null'}); return false;">
+            <label class="rotulo" for="ct-nome">Nome</label>
+            <input id="ct-nome" class="campo" type="text" maxlength="40" value="${c ? esc(c.nome) : ''}" required autocomplete="off">
+            <button class="btn btn-primario" type="submit">Guardar</button>
+        </form>
+        ${c ? `<button class="btn btn-perigo" onclick="eliminarCategoria(${c.id})">Eliminar categoria</button>` : ''}
+        <button class="btn btn-contorno" onclick="abrirCategorias()">Voltar</button>`);
+    if (!c) setTimeout(() => { const i = $('ct-nome'); if (i) i.focus(); }, 60);
+}
+async function guardarCategoria(id) {
+    const nome = $('ct-nome').value.trim();
+    if (!nome) return;
+    if (estado.categorias.some((c) => c.id !== id && artKey(c.nome) === artKey(nome))) { toast('Já existe uma categoria com esse nome.', true); return; }
+    try {
+        if (id == null) {
+            const r = await api('categorias', { method: 'POST', body: { nome }, prefer: 'return=representation' });
+            estado.categorias.push({ id: r[0].id, nome: r[0].nome });
+        } else {
+            await api(`categorias?id=eq.${id}`, { method: 'PATCH', body: { nome }, prefer: 'return=minimal' });
+            catPorId(id).nome = nome;
+        }
+        estado.categorias.sort((a, b) => a.nome.localeCompare(b.nome, 'pt'));
+        guardarCache();
+        render();
+        abrirCategorias();
+    } catch (e) { toast('Não ficou gravado: ' + e.message, true); }
+}
+async function eliminarCategoria(id) {
+    const c = catPorId(id);
+    if (!c) return;
+    const n = Object.values(estado.artCats).filter((x) => x === id).length;
+    if (!await confirmar(`Eliminar "${c.nome}"?`, n ? `${n} ${n === 1 ? 'artigo conhecido fica' : 'artigos conhecidos ficam'} sem categoria.` : 'Nenhum artigo a usa.', 'Eliminar', true)) return;
+    try {
+        await api(`categorias?id=eq.${id}`, { method: 'DELETE', prefer: 'return=minimal' });
+        estado.categorias = estado.categorias.filter((x) => x.id !== id);
+        Object.keys(estado.artCats).forEach((k) => { if (estado.artCats[k] === id) delete estado.artCats[k]; });
+        _catIdx = null;
+        guardarCache();
+        render();
+        abrirCategorias();
+    } catch (e) { toast('Não foi eliminada: ' + e.message, true); }
 }
 async function guardarNome() {
     const nome = $('df-nome').value.trim();

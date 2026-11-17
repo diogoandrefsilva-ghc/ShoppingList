@@ -7,10 +7,11 @@ no mesmo projeto das outras apps). PWA, sem zoom.
 ## Ficheiros
 - `index.html` — só markup (login, sem-acesso, app, folha genérica).
 - `app.js` — toda a lógica, em secções `/* ── TÍTULO ── */`: Utilitários · Supabase ·
-  Login & acesso · Dados · Render · Artigos · Listas · Folhas · Definições & admin · Arranque.
+  Categorias · Login & acesso · Dados · Render · Artigos · Listas · Folhas · Definições & admin · Arranque.
 - `style.css` — todo o CSS; cores em variáveis (`:root`), modo escuro automático.
 - `sw.js` — service worker (rede primeiro, cache sem rede). **Sobe `CACHE_VERSION`** quando mudares a app.
-- `db/schema.sql` — schema completo, idempotente, para o SQL Editor do Supabase.
+- `db/schema.sql` — schema base; `db/categorias.sql` — categorias de artigos. Idempotentes e
+  **sem DROP/DELETE/REVOKE** (o Supabase não deixa passar migrações destrutivas).
 
 ## Modelo
 - `listas`: a da **Casa** (`fixa=true`, sempre aberta, não se apaga) e as de **ocasião**
@@ -18,6 +19,11 @@ no mesmo projeto das outras apps). PWA, sem zoom.
   Todas as abertas aparecem ao mesmo tempo no ecrã "Tudo"; os chips filtram por lista.
 - `artigos`: `nome`, `qtd` (texto livre), `tratado`. Quem criou / quem tratou é carimbado
   por trigger no servidor (`artigos_carimbo`), nunca pelo cliente.
+- `categorias` / `artigo_categorias`: dicionário e memória artigo→categoria, copiados do
+  FestasBV (cópia, não ligação) + categorias de casa. A categoria **não vive no artigo**:
+  lê-se da memória pelo nome normalizado (`artKey`) a cada render (`catDe`), com palpite
+  pelo singular / primeira palavra quando o nome ainda não é conhecido. Muda-se no ⋮ do
+  artigo (qualquer pessoa); o dicionário gere-o o admin nas Definições.
 - `perfis`: email → nome que aparece ao lado dos artigos.
 - `allowed_users` / `access_requests`: acesso como nas outras apps; o admin aprova nas Definições.
 - RLS: quem está em `allowed_users` vê e edita tudo (a casa é partilhada).
