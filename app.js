@@ -2,7 +2,7 @@
    Compras — listas de compras partilhadas lá de casa.
    Sem build, sem dependências. Supabase por REST (schema `shoppinglist`).
    Secções: Utilitários · Supabase (sessão, fetch) · Login & acesso ·
-   Categorias · Dados (carregar, refresco) · Render · Artigos · Catálogo · Listas · Folhas ·
+   Categorias · Dados (carregar, refresco) · Render · Artigos · Histórico · Catálogo · Listas · Folhas ·
    Definições & admin · Arranque
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -13,6 +13,7 @@ const ADMIN_EMAIL = 'diogo.andre.f.silva@gmail.com';
 const SESSION_KEY = 'compras_session';
 const CACHE_KEY = 'compras_dados';
 const REFRESCO_MS = 15000;
+const DIAS_TRATADOS = 3;   // ao fim destes dias um tratado sai da lista e fica só no histórico
 const EMOJIS = ['🛒', '🍽️', '🎉', '🎂', '🍷', '🥩', '🏖️', '🎄', '🧺', '🧹', '🐶', '💊'];
 
 const estado = {
@@ -49,6 +50,27 @@ function nomeDe(email) {
     const p = e.split('@')[0].split(/[._-]/)[0] || e;
     return p.charAt(0).toUpperCase() + p.slice(1);
 }
+// "hoje 18:32", "ontem 09:10", "seg 18:32", "12 nov" — para o momento em que um artigo foi tratado
+function quando(iso) {
+    const d = new Date(iso);
+    if (!iso || isNaN(d)) return '';
+    const hora = d.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+    const dias = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 864e5);
+    if (dias <= 0) return 'hoje ' + hora;
+    if (dias === 1) return 'ontem ' + hora;
+    if (dias < 7) return d.toLocaleDateString('pt-PT', { weekday: 'short' }).replace('.', '') + ' ' + hora;
+    return d.toLocaleDateString('pt-PT', { day: 'numeric', month: 'short' }).replace('.', '');
+}
+function diaExtenso(iso) {
+    const d = new Date(iso);
+    const dias = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 864e5);
+    if (dias <= 0) return 'Hoje';
+    if (dias === 1) return 'Ontem';
+    return maiuscula(d.toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' }));
+}
+// Um tratado só fica à vista na lista durante DIAS_TRATADOS (e se ninguém o arquivou antes).
+function limiteTratados() { return new Date(Date.now() - DIAS_TRATADOS * 864e5).toISOString(); }
+function aVista(a) { return !a.tratado || (!a.arquivado_em && (!a.tratado_em || a.tratado_em >= limiteTratados())); }
 function dataCurta(iso) {
     if (!iso) return '';
     const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso);
@@ -477,7 +499,9 @@ async function carregarDados(silencioso) {
         // As categorias são tolerantes: se falharem, a lista aparece na mesma (sem grupos).
         const [listas, artigos, perfis, cats, artCats, catalogo] = await Promise.all([
             api('listas?select=*&order=fixa.desc,criado_em.asc'),
-            api('artigos?select=*&order=criado_em.asc'),
+            api(`artigos?select=*&order=criado_em.asc&or=(tratado.is.false,and(arquivado_em.is.null,tratado_em.gte.${encodeURIComponent('"' + limiteTratados() + '"')}))`)
+                // se o filtro falhar por algum motivo, vem tudo e o aVista() esconde os antigos na mesma
+                .catch(() => api('artigos?select=*&order=criado_em.asc')),
             api('perfis?select=email,nome'),
             api('categorias?select=id,nome').catch(() => null),
             api('artigo_categorias?select=artigo_key,categoria_id&limit=5000').catch(() => null),
@@ -533,7 +557,7 @@ function listasAbertas() { return estado.listas.filter((l) => !l.concluida_em); 
 function listasConcluidas() {
     return estado.listas.filter((l) => l.concluida_em).sort((a, b) => (a.concluida_em < b.concluida_em ? 1 : -1));
 }
-function artigosDe(listaId) { return estado.artigos.filter((a) => a.lista_id === listaId); }
+function artigosDe(listaId) { return estado.artigos.filter((a) => a.lista_id === listaId && aVista(a)); }
 function listaPorId(id) { return estado.listas.find((l) => l.id === id); }
 function corDe(lista) {
     if (lista.fixa) return 'c0';
@@ -623,7 +647,7 @@ function renderLista(l) {
                     <svg class="seta ${aberto ? 'aberta' : ''}" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
                     Tratados (${tratados.length})
                 </button>
-                ${aberto ? `<button class="btn-mini discreto" onclick="limparTratados(${l.id})">Limpar</button>` : ''}
+                ${aberto ? `<button class="btn-mini discreto" onclick="arquivarTratados(${l.id})">Arquivar</button>` : ''}
               </div>`;
         if (aberto) h += `<ul class="artigos tratados">${tratados.map(renderArtigo).join('')}</ul>`;
     }
@@ -649,7 +673,7 @@ function renderPorCategoria(arts) {
 
 function renderArtigo(a) {
     const quem = a.tratado
-        ? (a.tratado_por ? `tratado por ${nomeDe(a.tratado_por)}` : 'tratado')
+        ? [a.tratado_por ? `tratado por ${nomeDe(a.tratado_por)}` : 'tratado', quando(a.tratado_em)].filter(Boolean).join(' · ')
         : nomeDe(a.criado_por);
     return `<li class="artigo ${a.tratado ? 'feito' : ''} ${a.id < 0 ? 'pendente' : ''}">
         <button class="art-check" onclick="alternarTratado(${a.id})" aria-label="${a.tratado ? 'Voltar a pôr na lista' : 'Marcar como tratado'}: ${esc(a.nome)}">
@@ -695,21 +719,6 @@ async function adicionarArtigo(listaId, nome, qtd) {
     // Já está por tratar nesta lista? Não duplica — avisa.
     const igual = estado.artigos.find((a) => a.lista_id === listaId && !a.tratado && a.nome.toLowerCase() === nome.toLowerCase());
     if (igual) { toast(`"${igual.nome}" já está na lista.`); return; }
-
-    // Estava tratado? Volta para a lista em vez de criar outro.
-    const antigo = estado.artigos.find((a) => a.lista_id === listaId && a.tratado && a.id > 0 && a.nome.toLowerCase() === nome.toLowerCase());
-    if (antigo) {
-        const antes = { ...antigo };
-        Object.assign(antigo, { tratado: false, tratado_por: null, tratado_em: null, qtd: qtd || null });
-        render();
-        try {
-            const r = await api(`artigos?id=eq.${antigo.id}`, { method: 'PATCH', body: { tratado: false, qtd: qtd || null }, prefer: 'return=representation' });
-            if (r && r[0]) Object.assign(antigo, r[0]);
-            registarNoCatalogo(antigo.nome);
-            guardarCache();
-        } catch (e) { Object.assign(antigo, antes); render(); toast('Não ficou gravado: ' + e.message, true); }
-        return;
-    }
 
     const temp = {
         id: _tempId--, lista_id: listaId, nome, qtd: qtd || null, criado_por: emailAtual(),
@@ -812,18 +821,52 @@ async function apagarArtigo(id) {
         guardarCache();
     } catch (e) { estado.artigos = antes; render(); toast('Não foi apagado: ' + e.message, true); }
 }
-async function limparTratados(listaId) {
+// Passa já para o histórico os tratados de uma lista (em vez de esperar os DIAS_TRATADOS).
+// Nada se apaga: ficam com `arquivado_em` e deixam de vir no carregamento normal.
+async function arquivarTratados(listaId) {
     const l = listaPorId(listaId);
-    const n = artigosDe(listaId).filter((a) => a.tratado).length;
-    if (!l || !n) return;
-    if (!await confirmar(`Limpar os ${n} tratados de "${l.nome}"?`, 'Saem da lista de vez. Os que ainda faltam ficam.', 'Limpar')) return;
-    const antes = estado.artigos.slice();
-    estado.artigos = estado.artigos.filter((a) => !(a.lista_id === listaId && a.tratado));
+    const alvo = artigosDe(listaId).filter((a) => a.tratado && a.id > 0);
+    if (!l || !alvo.length) return;
+    const agora = new Date().toISOString();
+    alvo.forEach((a) => { a.arquivado_em = agora; });
     render();
+    toast(alvo.length === 1 ? '1 artigo passou para o histórico.' : `${alvo.length} artigos passaram para o histórico.`);
     try {
-        await api(`artigos?lista_id=eq.${listaId}&tratado=is.true`, { method: 'DELETE', prefer: 'return=minimal' });
+        await api(`artigos?lista_id=eq.${listaId}&tratado=is.true&arquivado_em=is.null`, { method: 'PATCH', body: { arquivado_em: agora }, prefer: 'return=minimal' });
         guardarCache();
-    } catch (e) { estado.artigos = antes; render(); toast('Não foi limpo: ' + e.message, true); }
+    } catch (e) { alvo.forEach((a) => { a.arquivado_em = null; }); render(); toast('Não ficou gravado: ' + e.message, true); }
+}
+
+/* ── HISTÓRICO: o que já se comprou em cada lista ── */
+// Não vem no carregamento normal (cresce sem fim): pede-se quando se abre a folha.
+let _hist = [];
+async function abrirHistorico(listaId) {
+    const l = listaPorId(listaId);
+    if (!l) return;
+    abrirFolha(`Histórico · ${l.nome}`, '<p class="nota">A carregar…</p>');
+    try {
+        _hist = await api(`artigos?select=id,nome,qtd,tratado_por,tratado_em&lista_id=eq.${listaId}&tratado=is.true&order=tratado_em.desc.nullslast&limit=300`) || [];
+    } catch (e) { $('folha-corpo').innerHTML = `<p class="nota">Não foi possível carregar: ${esc(e.message)}</p>`; return; }
+    if ($('folha-fundo').hidden) return;
+    if (!_hist.length) { $('folha-corpo').innerHTML = '<p class="nota">Ainda não há nada no histórico desta lista. Os artigos tratados aparecem aqui.</p>'; return; }
+    let h = `<p class="nota topo-nota">Tudo o que já foi tratado em ${esc(l.nome)}. Os tratados saem da lista ao fim de ${DIAS_TRATADOS} dias e ficam só aqui.${_hist.length === 300 ? ' A mostrar os 300 mais recentes.' : ''}</p>`;
+    let dia = null;
+    _hist.forEach((a, i) => {
+        const d = a.tratado_em ? diaExtenso(a.tratado_em) : 'Sem data';
+        if (d !== dia) { h += `${dia === null ? '' : '</ul>'}<h3 class="sec">${esc(d)}</h3><ul class="hist">`; dia = d; }
+        const hora = a.tratado_em ? new Date(a.tratado_em).toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' }) : '';
+        h += `<li><span class="hist-e">${esc(artEmoji(a.nome))}</span>
+            <span class="hist-t"><b>${esc(a.nome)}${a.qtd ? ` <span class="hist-q">${esc(a.qtd)}</span>` : ''}</b><small>${esc([hora, a.tratado_por ? nomeDe(a.tratado_por) : ''].filter(Boolean).join(' · '))}</small></span>
+            <button class="btn-mini" onclick="reporDoHistorico(${i}, ${listaId}, this)" aria-label="Voltar a pôr ${esc(a.nome)} na lista">Repor</button></li>`;
+    });
+    $('folha-corpo').innerHTML = h + '</ul>';
+}
+async function reporDoHistorico(i, listaId, btn) {
+    const a = _hist[i];
+    if (!a) return;
+    btn.disabled = true;
+    btn.textContent = 'Na lista ✓';
+    await adicionarArtigo(listaId, a.nome, a.qtd || null);
 }
 
 /* ── CATÁLOGO: adicionar sem escrever ────────── */
@@ -1063,7 +1106,8 @@ function abrirMenuLista(id) {
     const nFalta = artigosDe(id).length - nTrat;
     let h = `<div class="menu">
         <button onclick="abrirEditarLista(${id})">✏️ Mudar nome${l.fixa ? ' ou símbolo' : ', símbolo ou dia'}</button>`;
-    if (nTrat) h += `<button onclick="fecharFolha(); limparTratados(${id})">🧹 Limpar os ${nTrat} tratados</button>`;
+    if (nTrat) h += `<button onclick="fecharFolha(); arquivarTratados(${id})">🗂️ Passar os ${nTrat} tratados para o histórico</button>`;
+    h += `<button onclick="abrirHistorico(${id})">📜 Histórico do que já foi tratado</button>`;
     if (nFalta) h += `<button onclick="fecharFolha(); partilharLista(${id})">📤 Enviar a lista por mensagem</button>`;
     if (!l.fixa) {
         h += `<button onclick="fecharFolha(); concluirLista(${id})">✅ Concluir lista</button>
@@ -1108,8 +1152,7 @@ async function reabrirLista(id) {
 async function apagarLista(id) {
     const l = listaPorId(id);
     if (!l || l.fixa) return;
-    const n = artigosDe(id).length;
-    if (!await confirmar(`Apagar "${l.nome}"?`, n ? `A lista e os seus ${n} artigos são eliminados de vez.` : 'A lista é eliminada de vez.', 'Apagar', true)) return;
+    if (!await confirmar(`Apagar "${l.nome}"?`, 'A lista, os seus artigos e o histórico são eliminados de vez.', 'Apagar', true)) return;
     const antesL = estado.listas.slice(), antesA = estado.artigos.slice();
     estado.listas = estado.listas.filter((x) => x.id !== id);
     estado.artigos = estado.artigos.filter((a) => a.lista_id !== id);
@@ -1198,9 +1241,8 @@ async function abrirDefinicoes() {
 
         <h3 class="sec">Listas concluídas</h3>
         ${conc.length ? `<ul class="hist">${conc.map((l) => {
-            const n = artigosDe(l.id).length;
             return `<li><span class="hist-e">${esc(l.emoji)}</span>
-                <span class="hist-t"><b>${esc(l.nome)}</b><small>${esc(dataCurta(l.concluida_em))} · ${n} ${n === 1 ? 'artigo' : 'artigos'}</small></span>
+                <span class="hist-t"><b>${esc(l.nome)}</b><small>concluída ${esc(dataCurta(l.concluida_em))}</small></span>
                 <button class="btn-mini" onclick="reabrirLista(${l.id})">Reabrir</button>
                 <button class="btn-mini discreto" onclick="apagarLista(${l.id})" aria-label="Apagar ${esc(l.nome)}">Apagar</button></li>`;
         }).join('')}</ul>` : '<p class="nota">Ainda não há listas concluídas.</p>'}`;

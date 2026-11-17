@@ -19,6 +19,11 @@ no mesmo projeto das outras apps). PWA, sem zoom.
   Todas as abertas aparecem ao mesmo tempo no ecrã "Tudo"; os chips filtram por lista.
 - `artigos`: `nome`, `qtd` (texto livre), `tratado`. Quem criou / quem tratou é carimbado
   por trigger no servidor (`artigos_carimbo`), nunca pelo cliente.
+- **Tratados e histórico:** um tratado fica na lista `DIAS_TRATADOS` (3) dias, com quem e quando
+  (`tratado_em`), e depois só no histórico — ou logo, com "Arquivar" (`arquivado_em`). **Nada se
+  apaga.** O carregamento normal só traz os por tratar e os tratados ainda à vista (`aVista`);
+  o histórico pede-se à parte ao abrir a folha (menu ⋯ da lista). Por isso juntar um artigo cria
+  SEMPRE uma linha nova (cada compra é uma entrada do histórico), nunca ressuscita uma tratada.
 - `categorias` / `artigo_categorias`: dicionário e memória artigo→categoria, copiados do
   FestasBV (cópia, não ligação) + categorias de casa. A categoria **não vive no artigo**:
   lê-se da memória pelo nome normalizado (`artKey`) a cada render (`catDe`), com palpite

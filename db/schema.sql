@@ -183,3 +183,12 @@ insert into shoppinglist.allowed_users (email)
 insert into shoppinglist.listas (nome, emoji, fixa, criado_por)
   select 'Casa', '🏠', true, 'diogo.andre.f.silva@gmail.com'
    where not exists (select 1 from shoppinglist.listas where fixa);
+
+-- ── Histórico (migração shoppinglist_historico) ──────────────────────
+-- Um tratado fica à vista na lista uns dias (DIAS_TRATADOS na app) e depois
+-- só no histórico. Nada se apaga: `tratado_em` (posto pelo trigger) diz quando
+-- foi, e `arquivado_em` marca os que alguém mandou para o histórico mais cedo.
+alter table shoppinglist.artigos
+  add column if not exists arquivado_em timestamptz;
+create index if not exists artigos_historico_idx
+  on shoppinglist.artigos (lista_id, tratado_em desc) where tratado;
