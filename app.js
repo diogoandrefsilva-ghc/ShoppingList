@@ -674,7 +674,7 @@ function renderPorCategoria(arts) {
 function renderArtigo(a) {
     const quem = a.tratado
         ? [a.tratado_por ? `tratado por ${nomeDe(a.tratado_por)}` : 'tratado', quando(a.tratado_em)].filter(Boolean).join(' · ')
-        : nomeDe(a.criado_por);
+        : [nomeDe(a.criado_por), quando(a.criado_em)].filter(Boolean).join(' · ');
     return `<li class="artigo ${a.tratado ? 'feito' : ''} ${a.id < 0 ? 'pendente' : ''}">
         <button class="art-check" onclick="alternarTratado(${a.id})" aria-label="${a.tratado ? 'Voltar a pôr na lista' : 'Marcar como tratado'}: ${esc(a.nome)}">
             <span class="bola"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
