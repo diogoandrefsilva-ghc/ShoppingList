@@ -1,6 +1,7 @@
 -- =====================================================================
 -- ShoppingList — schema inicial (schema `shoppinglist`, mesmo projeto
--- Supabase das outras apps). IDEMPOTENTE: pode correr mais que uma vez.
+-- Supabase das outras apps). IDEMPOTENTE e sem DROP/DELETE/REVOKE: pode
+-- correr mais que uma vez. Já aplicado (migração shoppinglist_schema_inicial).
 --
 -- Depois de correr: Supabase → Project Settings → API → "Exposed schemas"
 -- → acrescentar `shoppinglist` (sem isso o REST responde 406).
@@ -89,8 +90,7 @@ begin
   end if;
   return new;
 end $$;
-drop trigger if exists artigos_carimbo on shoppinglist.artigos;
-create trigger artigos_carimbo before insert or update on shoppinglist.artigos
+create or replace trigger artigos_carimbo before insert or update on shoppinglist.artigos
   for each row execute function shoppinglist.artigos_carimbo();
 
 create or replace function shoppinglist.listas_carimbo() returns trigger
@@ -110,8 +110,7 @@ begin
   end if;
   return new;
 end $$;
-drop trigger if exists listas_carimbo on shoppinglist.listas;
-create trigger listas_carimbo before insert or update on shoppinglist.listas
+create or replace trigger listas_carimbo before insert or update on shoppinglist.listas
   for each row execute function shoppinglist.listas_carimbo();
 
 -- ── RLS ──────────────────────────────────────────────────────────────
@@ -121,62 +120,61 @@ alter table shoppinglist.perfis          enable row level security;
 alter table shoppinglist.listas          enable row level security;
 alter table shoppinglist.artigos         enable row level security;
 
-do $$
-declare p record;
+-- As policies criam-se uma vez só (sem DROP: o Supabase trava migrações
+-- destrutivas). Para mudar uma policy, faz uma migração nova com ALTER POLICY.
+do $pol$
 begin
-  for p in select policyname, tablename from pg_policies where schemaname = 'shoppinglist' loop
-    execute format('drop policy %I on shoppinglist.%I', p.policyname, p.tablename);
-  end loop;
-end $$;
+  if exists (select 1 from pg_policies where schemaname = 'shoppinglist') then
+    raise notice 'policies já existem — nada a fazer';
+    return;
+  end if;
 
-create policy au_select on shoppinglist.allowed_users for select to authenticated
-  using (lower(email) = lower(auth.email()) or shoppinglist.is_admin());
-create policy au_admin_ins on shoppinglist.allowed_users for insert to authenticated
-  with check (shoppinglist.is_admin());
-create policy au_admin_del on shoppinglist.allowed_users for delete to authenticated
-  using (shoppinglist.is_admin());
+  create policy au_select on shoppinglist.allowed_users for select to authenticated
+    using (lower(email) = lower(auth.email()) or shoppinglist.is_admin());
+  create policy au_admin_ins on shoppinglist.allowed_users for insert to authenticated
+    with check (shoppinglist.is_admin());
+  create policy au_admin_del on shoppinglist.allowed_users for delete to authenticated
+    using (shoppinglist.is_admin());
 
-create policy ar_insert_own on shoppinglist.access_requests for insert to authenticated
-  with check (lower(email) = lower(auth.email()));
-create policy ar_admin_select on shoppinglist.access_requests for select to authenticated
-  using (shoppinglist.is_admin());
-create policy ar_admin_delete on shoppinglist.access_requests for delete to authenticated
-  using (shoppinglist.is_admin());
+  create policy ar_insert_own on shoppinglist.access_requests for insert to authenticated
+    with check (lower(email) = lower(auth.email()));
+  create policy ar_admin_select on shoppinglist.access_requests for select to authenticated
+    using (shoppinglist.is_admin());
+  create policy ar_admin_delete on shoppinglist.access_requests for delete to authenticated
+    using (shoppinglist.is_admin());
 
-create policy pf_select on shoppinglist.perfis for select to authenticated
-  using (shoppinglist.is_allowed());
-create policy pf_insert on shoppinglist.perfis for insert to authenticated
-  with check (shoppinglist.is_allowed() and lower(email) = lower(auth.email()));
-create policy pf_update on shoppinglist.perfis for update to authenticated
-  using (shoppinglist.is_allowed() and lower(email) = lower(auth.email()))
-  with check (lower(email) = lower(auth.email()));
+  create policy pf_select on shoppinglist.perfis for select to authenticated
+    using (shoppinglist.is_allowed());
+  create policy pf_insert on shoppinglist.perfis for insert to authenticated
+    with check (shoppinglist.is_allowed() and lower(email) = lower(auth.email()));
+  create policy pf_update on shoppinglist.perfis for update to authenticated
+    using (shoppinglist.is_allowed() and lower(email) = lower(auth.email()))
+    with check (lower(email) = lower(auth.email()));
 
--- A casa é partilhada: quem tem acesso vê e mexe em tudo.
-create policy li_select on shoppinglist.listas for select to authenticated
-  using (shoppinglist.is_allowed());
-create policy li_insert on shoppinglist.listas for insert to authenticated
-  with check (shoppinglist.is_allowed());
-create policy li_update on shoppinglist.listas for update to authenticated
-  using (shoppinglist.is_allowed()) with check (shoppinglist.is_allowed());
-create policy li_delete on shoppinglist.listas for delete to authenticated
-  using (shoppinglist.is_allowed() and not fixa);
+  -- A casa é partilhada: quem tem acesso vê e mexe em tudo.
+  create policy li_select on shoppinglist.listas for select to authenticated
+    using (shoppinglist.is_allowed());
+  create policy li_insert on shoppinglist.listas for insert to authenticated
+    with check (shoppinglist.is_allowed());
+  create policy li_update on shoppinglist.listas for update to authenticated
+    using (shoppinglist.is_allowed()) with check (shoppinglist.is_allowed());
+  create policy li_delete on shoppinglist.listas for delete to authenticated
+    using (shoppinglist.is_allowed() and not fixa);
 
-create policy ar_select on shoppinglist.artigos for select to authenticated
-  using (shoppinglist.is_allowed());
-create policy ar_insert on shoppinglist.artigos for insert to authenticated
-  with check (shoppinglist.is_allowed());
-create policy ar_update on shoppinglist.artigos for update to authenticated
-  using (shoppinglist.is_allowed()) with check (shoppinglist.is_allowed());
-create policy ar_delete on shoppinglist.artigos for delete to authenticated
-  using (shoppinglist.is_allowed());
+  create policy ar_select on shoppinglist.artigos for select to authenticated
+    using (shoppinglist.is_allowed());
+  create policy ar_insert on shoppinglist.artigos for insert to authenticated
+    with check (shoppinglist.is_allowed());
+  create policy ar_update on shoppinglist.artigos for update to authenticated
+    using (shoppinglist.is_allowed()) with check (shoppinglist.is_allowed());
+  create policy ar_delete on shoppinglist.artigos for delete to authenticated
+    using (shoppinglist.is_allowed());
+end $pol$;
 
--- ── Privilégios (sem anon: tudo exige sessão) ────────────────────────
+-- ── Privilégios (o anon não recebe nada: tudo exige sessão) ──────────
 grant usage on schema shoppinglist to authenticated, service_role;
-revoke all on all tables in schema shoppinglist from anon;
 grant select, insert, update, delete on all tables in schema shoppinglist to authenticated;
 grant all on all tables in schema shoppinglist to service_role;
-revoke execute on all functions in schema shoppinglist from public, anon;
-grant execute on function shoppinglist.is_admin(), shoppinglist.is_allowed() to authenticated, service_role;
 
 -- ── Dados iniciais ───────────────────────────────────────────────────
 insert into shoppinglist.allowed_users (email)
