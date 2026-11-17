@@ -27,7 +27,8 @@ no mesmo projeto das outras apps). PWA, sem zoom.
 - `catalogo`: artigos conhecidos (nome com acentos, chave `artKey`) para a folha **Adicionar
   artigos** (botão de grelha na barra): tocar só escolhe (`_catSel`), o botão do fundo adiciona
   os escolhidos de uma vez; fechar a folha desiste. Cresce sozinho com
-  o que se escreve (`registarNoCatalogo`); o modo "Tirar artigos desta folha" apaga do catálogo.
+  o que se escreve ou renomeia numa lista (`registarNoCatalogo`). "Editar os artigos conhecidos"
+  abre cada um para mudar nome, símbolo e categoria, ou tirá-lo (`abrirArtigoConhecido`).
   Não há `<datalist>` de sugestões de propósito — no iOS abria um balão a cada artigo.
 - **Símbolo do artigo** (`artEmoji`): um emoji escolhido à mão no ⋮ do artigo (`catalogo.emoji`),
   senão o primeiro padrão de `ART_ICO` que bater no nome (específico antes do genérico; corre

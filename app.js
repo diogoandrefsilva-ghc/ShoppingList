@@ -705,6 +705,7 @@ async function adicionarArtigo(listaId, nome, qtd) {
         try {
             const r = await api(`artigos?id=eq.${antigo.id}`, { method: 'PATCH', body: { tratado: false, qtd: qtd || null }, prefer: 'return=representation' });
             if (r && r[0]) Object.assign(antigo, r[0]);
+            registarNoCatalogo(antigo.nome);
             guardarCache();
         } catch (e) { Object.assign(antigo, antes); render(); toast('Não ficou gravado: ' + e.message, true); }
         return;
@@ -797,6 +798,7 @@ async function guardarArtigo(id) {
     render();
     try {
         await api(`artigos?id=eq.${id}`, { method: 'PATCH', body: corpo, prefer: 'return=minimal' });
+        registarNoCatalogo(nome);   // um nome novo também passa a artigo conhecido
         guardarCache();
     } catch (e) { Object.assign(a, antes); render(); toast('Não ficou gravado: ' + e.message, true); }
 }
@@ -853,9 +855,9 @@ async function definirEmoji(nome, emoji) {
         toast('Símbolo não guardado: ' + e.message, true);
     }
 }
-function abrirCatalogo() {
-    _catGerir = false;
-    _catSel = new Set();
+function abrirCatalogo(aEditar) {
+    _catGerir = aEditar === true;
+    if (!_catGerir) _catSel = new Set();
     abrirFolha('Adicionar artigos', `
         <div id="cg-destinos" class="cg-destinos"></div>
         <input id="cg-busca" class="campo cg-busca" type="search" placeholder="Procurar…" autocomplete="off" autocapitalize="off" oninput="renderCatalogo()" aria-label="Procurar artigo">
@@ -884,7 +886,7 @@ function renderCatalogo() {
     $('cg-destinos').innerHTML = abertas.length > 1
         ? abertas.map((l) => `<button class="cg-dest ${corDe(l)} ${l.id === dest.id ? 'ativo' : ''}" onclick="escolherDestinoCatalogo(${l.id})">${esc(l.emoji)} ${esc(l.nome)}</button>`).join('')
         : `<p class="nota topo-nota">Escolhe os artigos e adiciona-os de uma vez a ${esc(dest.emoji)} ${esc(dest.nome)}.</p>`;
-    $('cg-gerir').textContent = _catGerir ? 'Voltar a escolher' : 'Tirar artigos desta folha';
+    $('cg-gerir').textContent = _catGerir ? 'Voltar a escolher' : 'Editar os artigos conhecidos';
 
     const naLista = new Set(artigosDe(dest.id).filter((a) => !a.tratado).map((a) => artKey(a.nome)));
     const busca = artKey($('cg-busca').value);
@@ -901,7 +903,7 @@ function renderCatalogo() {
             <div class="cg-itens">${g.itens.sort((a, b) => a.nome.localeCompare(b.nome, 'pt')).map((c) => {
                 const ja = naLista.has(c.artigo_key), on = !ja && _catSel.has(c.artigo_key);
                 const ico = esc(c.emoji || emojiAuto(c.nome));
-                if (_catGerir) return `<button class="cg-item gerir" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-label="Tirar ${esc(c.nome)} dos artigos conhecidos"><i>×</i><span class="cg-e">${ico}</span><span class="cg-n">${esc(c.nome)}</span></button>`;
+                if (_catGerir) return `<button class="cg-item gerir" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-label="Editar ${esc(c.nome)}"><i>✎</i><span class="cg-e">${ico}</span><span class="cg-n">${esc(c.nome)}</span></button>`;
                 if (ja) return `<button class="cg-item ja" disabled><span class="cg-e">${ico}</span><span class="cg-n">${esc(c.nome)}</span><small>já na lista</small></button>`;
                 return `<button class="cg-item ${corDe(dest)} ${on ? 'on' : ''}" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-pressed="${on}">${on ? '<i>✓</i>' : ''}<span class="cg-e">${ico}</span><span class="cg-n">${esc(c.nome)}</span></button>`;
             }).join('')}</div>`).join('');
@@ -935,15 +937,67 @@ async function tocarCatalogo(k) {
     const c = estado.catalogo.find((x) => x.artigo_key === k);
     const dest = destinoAtual();
     if (!c || !dest) return;
-    if (_catGerir) {
-        estado.catalogo = estado.catalogo.filter((x) => x !== c);
-        renderCatalogo();
-        try { await api(`catalogo?artigo_key=eq.${encodeURIComponent(k)}`, { method: 'DELETE', prefer: 'return=minimal' }); guardarCache(); }
-        catch (e) { estado.catalogo.push(c); renderCatalogo(); toast('Não foi retirado: ' + e.message, true); }
-        return;
-    }
+    if (_catGerir) { abrirArtigoConhecido(k); return; }
     if (_catSel.has(k)) _catSel.delete(k); else _catSel.add(k);
     renderCatalogo();
+}
+
+// ── Editar um artigo conhecido (nome, símbolo, categoria) ou tirá-lo do catálogo ──
+function abrirArtigoConhecido(k) {
+    const c = estado.catalogo.find((x) => x.artigo_key === k);
+    if (!c) return;
+    const { cat, certa } = catDe(c.nome);
+    abrirFolha('Artigo conhecido', `
+        <form onsubmit="guardarArtigoConhecido(this.dataset.k); return false;" data-k="${esc(k)}">
+            <label class="rotulo" for="ec-nome">Nome</label>
+            <input id="ec-nome" class="campo" type="text" maxlength="120" value="${esc(c.nome)}" required autocomplete="off">
+            <label class="rotulo" for="ec-emoji">Símbolo <span>(vazio = automático: ${esc(emojiAuto(c.nome))})</span></label>
+            <input id="ec-emoji" class="campo campo-emoji" type="text" maxlength="16" value="${esc(c.emoji || '')}" placeholder="${esc(emojiAuto(c.nome))}" autocomplete="off" autocorrect="off">
+            ${estado.categorias.length ? `<label class="rotulo" for="ec-cat">Categoria ${cat && !certa ? '<span>(palpite — guarda para confirmar)</span>' : ''}</label>
+            <select id="ec-cat" class="campo">
+                <option value="">— sem categoria —</option>
+                ${estado.categorias.map((x) => `<option value="${x.id}" ${cat && cat.id === x.id ? 'selected' : ''}>${catEmoji(x.nome)} ${esc(x.nome)}</option>`).join('')}
+            </select>` : ''}
+            <p class="nota">Vale para a folha "Adicionar artigos" e para a categoria e o símbolo deste artigo em todas as listas. Os artigos que já estão nas listas ficam com o nome que têm.</p>
+            <button class="btn btn-primario" type="submit">Guardar</button>
+        </form>
+        <button class="btn btn-perigo" data-k="${esc(k)}" onclick="tirarArtigoConhecido(this.dataset.k)">Tirar dos artigos conhecidos</button>
+        <button class="btn btn-contorno" onclick="abrirCatalogo(true)">Voltar</button>`);
+}
+async function guardarArtigoConhecido(k) {
+    const c = estado.catalogo.find((x) => x.artigo_key === k);
+    if (!c) return abrirCatalogo(true);
+    const nome = $('ec-nome').value.trim().replace(/\s+/g, ' ');
+    const nk = artKey(nome);
+    if (!nk) return;
+    if (nk !== k && estado.catalogo.some((x) => x.artigo_key === nk)) { toast(`"${nome}" já existe nos artigos conhecidos.`, true); return; }
+    const emoji = emojiLimpo($('ec-emoji').value) || null;
+    const sc = $('ec-cat');
+    const catId = sc ? (Number(sc.value) || null) : undefined;
+    const antes = { ...c };
+    Object.assign(c, { artigo_key: nk, nome, emoji });
+    abrirCatalogo(true);
+    render();
+    try {
+        await api('catalogo?on_conflict=artigo_key', { method: 'POST', body: { artigo_key: nk, nome, emoji }, prefer: 'resolution=merge-duplicates,return=minimal' });
+        // Mudar o nome muda a chave: a linha antiga sai depois de a nova estar gravada.
+        if (nk !== k) await api(`catalogo?artigo_key=eq.${encodeURIComponent(k)}`, { method: 'DELETE', prefer: 'return=minimal' });
+        guardarCache();
+    } catch (e) {
+        Object.assign(c, antes);
+        render(); renderCatalogo();
+        toast('Não ficou gravado: ' + e.message, true);
+        return;
+    }
+    if (catId !== undefined) { await definirCategoria(nome, catId); render(); renderCatalogo(); }
+}
+async function tirarArtigoConhecido(k) {
+    const c = estado.catalogo.find((x) => x.artigo_key === k);
+    if (!c) return abrirCatalogo(true);
+    estado.catalogo = estado.catalogo.filter((x) => x !== c);
+    abrirCatalogo(true);
+    try { await api(`catalogo?artigo_key=eq.${encodeURIComponent(k)}`, { method: 'DELETE', prefer: 'return=minimal' }); guardarCache(); toast(`"${c.nome}" saiu dos artigos conhecidos.`); }
+    catch (e) { estado.catalogo.push(c); renderCatalogo(); toast('Não foi retirado: ' + e.message, true); }
 }
 async function adicionarDaBusca() {
     const inp = $('cg-busca'), dest = destinoAtual();

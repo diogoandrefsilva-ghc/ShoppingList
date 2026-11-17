@@ -333,7 +333,7 @@ input, select, textarea { font: inherit; font-size: 16px; color: inherit; }
 }
 .cg-item.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 13%, var(--cartao)); font-weight: 700; }
 .cg-item.gerir { border: 2px dashed var(--linha); box-shadow: none; color: var(--tinta-2); }
-.cg-item.gerir i { background: var(--perigo); }
+.cg-item.gerir i { background: var(--tinta-2); animation: none; }
 .cg-item.ja { background: transparent; box-shadow: none; color: var(--tinta-3); }
 .cg-item.ja .cg-e { opacity: .45; filter: grayscale(1); }
 .cg-item small { font-size: 11px; }
