@@ -1,6 +1,6 @@
 // Service worker: a app abre sem rede (com os dados da última visita, que
 // vivem no localStorage). Sobe a versão sempre que mudares index/style/app.
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CACHE_NAME = `compras-${CACHE_VERSION}`;
 const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'apple-touch-icon.png', 'icon-192.png'];
 

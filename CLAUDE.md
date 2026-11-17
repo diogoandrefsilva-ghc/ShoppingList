@@ -40,4 +40,10 @@ no mesmo projeto das outras apps). PWA, sem zoom.
 ## Notas
 - Escritas são otimistas (o ecrã muda logo, desfaz se o servidor recusar); há refresco
   a cada 15 s e ao voltar à app, que espera pelas escritas em curso (`_escritas`).
+- **iPhone, app instalada:** com a barra de estado transparente o iOS dá à página um ecrã útil
+  mais curto que o ecrã real, e o que cola ao fundo ficava a flutuar ~50pt acima. `medirViewport()`
+  mede a diferença e põe-na em `--vp-gap`; a barra de adicionar, as folhas, o splash e o toast
+  descem esse valor. Qualquer coisa nova com `position: fixed` colada ao fundo tem de o usar.
+- O botão colado ao fundo de uma folha (`.cg-fundo`, sticky) leva o respiro de baixo nele próprio:
+  o Safari não deixa um sticky entrar no padding do pai.
 - Tudo o que vem do utilizador passa por `esc()` antes de ir para `innerHTML`.

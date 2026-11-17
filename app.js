@@ -568,6 +568,9 @@ function render() {
     $('conteudo').innerHTML = visiveis.map(renderLista).join('') ||
         '<p class="vazio-geral">Ainda não há listas. Assim que a base de dados estiver pronta, a lista da Casa aparece aqui.</p>';
 
+    const hoje = new Date().toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
+    $('resumo').textContent = `${hoje} · ${totalFalta ? `${totalFalta} por tratar` : 'nada por tratar'}`;
+
     // Barra de adicionar
     const d = destinoAtual();
     const bd = $('add-destino');
@@ -575,7 +578,8 @@ function render() {
         bd.className = 'add-destino ' + corDe(d);
         bd.innerHTML = `<span>${esc(d.emoji)}</span>`;
         bd.title = d.nome;
-        $('add-nome').placeholder = `Adicionar a ${d.nome}…`;
+        bd.setAttribute('aria-label', `Lista de destino: ${d.nome}. Tocar para mudar.`);
+        $('add-nome').placeholder = `Juntar a ${d.nome}…`;
     }
     $('barra-add').hidden = !d;
 
@@ -591,7 +595,7 @@ function renderLista(l) {
     const aberto = !!estado.tratadosAbertos[l.id];
     const sub = [];
     if (l.data) sub.push(dataCurta(l.data));
-    sub.push(falta.length ? `${falta.length} por tratar` : (arts.length ? 'tudo tratado' : 'vazia'));
+    sub.push(!arts.length ? 'vazia' : (falta.length ? `${falta.length} por tratar` : 'tudo tratado') + (tratados.length && falta.length ? ` · ${tratados.length} já ${tratados.length === 1 ? 'tratado' : 'tratados'}` : ''));
 
     let h = `<section class="lista ${corDe(l)}" id="lista-${l.id}">
         <div class="lista-topo">
@@ -600,16 +604,17 @@ function renderLista(l) {
             <button class="icone-btn" onclick="abrirMenuLista(${l.id})" aria-label="Opções da lista ${esc(l.nome)}">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
             </button>
-        </div>`;
+        </div>
+        ${arts.length ? `<div class="prog" role="progressbar" aria-label="Tratados" aria-valuemin="0" aria-valuemax="${arts.length}" aria-valuenow="${tratados.length}"><i style="width:${Math.round(100 * tratados.length / arts.length)}%"></i></div>` : ''}`;
 
     if (!arts.length) {
-        h += `<p class="lista-vazia">${l.fixa ? 'Não falta nada em casa. Quando faltar, escreve em baixo.' : 'Lista vazia. Escreve em baixo o que é preciso comprar.'}</p>`;
+        h += `<p class="lista-vazia"><span aria-hidden="true">${l.fixa ? '✨' : '📝'}</span>${l.fixa ? 'Não falta nada em casa. Quando faltar, junta em baixo.' : 'Lista vazia. Junta em baixo o que é preciso comprar.'}</p>`;
     } else {
         h += `<ul class="artigos">${renderPorCategoria(falta)}</ul>`;
         if (!falta.length && !l.fixa) {
             h += `<div class="tudo-ok"><span>Está tudo comprado 🎉</span><button class="btn-mini" onclick="concluirLista(${l.id})">Concluir lista</button></div>`;
         } else if (!falta.length) {
-            h += `<p class="lista-vazia">Tudo tratado 🎉</p>`;
+            h += `<p class="lista-vazia"><span aria-hidden="true">🎉</span>Tudo tratado.</p>`;
         }
     }
     if (tratados.length) {
@@ -855,10 +860,10 @@ function abrirCatalogo() {
         <div id="cg-destinos" class="cg-destinos"></div>
         <input id="cg-busca" class="campo cg-busca" type="search" placeholder="Procurar…" autocomplete="off" autocapitalize="off" oninput="renderCatalogo()" aria-label="Procurar artigo">
         <div id="cg-grupos"></div>
+        <button id="cg-gerir" class="btn btn-discreto" onclick="alternarGerirCatalogo()"></button>
         <div class="cg-fundo">
             <button id="cg-ok" class="btn btn-primario" onclick="confirmarCatalogo()"></button>
-        </div>
-        <button id="cg-gerir" class="btn btn-discreto" onclick="alternarGerirCatalogo()"></button>`);
+        </div>`);
     _catAberto = true;
     renderCatalogo();
 }
@@ -911,7 +916,7 @@ function renderCatalogo() {
     // Botão do fundo: conta só os escolhidos que ainda não estão na lista de destino
     const n = [..._catSel].filter((k) => !naLista.has(k)).length;
     const ok = $('cg-ok');
-    ok.hidden = _catGerir;
+    ok.parentNode.hidden = _catGerir;
     ok.disabled = !n;
     ok.textContent = n ? `Adicionar ${n} ${n === 1 ? 'artigo' : 'artigos'} a ${dest.nome}` : 'Toca nos artigos para escolher';
 }
@@ -1282,6 +1287,24 @@ async function retirarAcesso(email) {
 // e o duplo toque no CSS (touch-action: manipulation).
 ['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
 document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+/* No iPhone, com a app instalada (barra de estado transparente), o iOS dá à
+   página um ecrã útil mais curto do que o ecrã real: o que cola ao fundo fica
+   a flutuar uns 50pt acima. Mede-se a diferença e o CSS (--vp-gap) desce a barra,
+   as folhas e o toast esse bocado. Só no iOS instalado (navigator.standalone) e
+   só se a diferença tiver o tamanho de uma barra de estado — fora disso, zero. */
+function medirViewport() {
+    let gap = 0;
+    if (navigator.standalone === true && window.innerWidth === screen.width) {
+        const d = screen.height - window.innerHeight;
+        if (d >= 20 && d <= 70) gap = d;
+    }
+    document.documentElement.style.setProperty('--vp-gap', gap + 'px');
+}
+medirViewport();
+window.addEventListener('resize', medirViewport);
+window.addEventListener('orientationchange', () => setTimeout(medirViewport, 300));
+window.addEventListener('pageshow', medirViewport);
+
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
 }
