@@ -86,3 +86,9 @@ insert into shoppinglist.artigo_categorias (artigo_key, categoria_id, origem)
   select b.k, c.id, 'base'
     from base b join shoppinglist.categorias c on c.nome = b.cat
   on conflict (artigo_key) do nothing;
+
+-- Símbolo escolhido à mão para um artigo (um emoji). Vazio = automático: a app
+-- tira-o do nome (ART_ICO) ou, à falta disso, da categoria.
+-- (migração shoppinglist_catalogo_emoji)
+alter table shoppinglist.catalogo
+  add column if not exists emoji text check (emoji is null or char_length(emoji) <= 16);

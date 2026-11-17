@@ -29,6 +29,10 @@ no mesmo projeto das outras apps). PWA, sem zoom.
   os escolhidos de uma vez; fechar a folha desiste. Cresce sozinho com
   o que se escreve (`registarNoCatalogo`); o modo "Tirar artigos desta folha" apaga do catálogo.
   Não há `<datalist>` de sugestões de propósito — no iOS abria um balão a cada artigo.
+- **Símbolo do artigo** (`artEmoji`): um emoji escolhido à mão no ⋮ do artigo (`catalogo.emoji`),
+  senão o primeiro padrão de `ART_ICO` que bater no nome (específico antes do genérico; corre
+  sobre o `artKey`, sem acentos), senão o da categoria. Aparece nas linhas das listas e nos
+  mosaicos do catálogo. Artigo novo sem símbolo certo → acrescenta um padrão ao `ART_ICO`.
 - `perfis`: email → nome que aparece ao lado dos artigos.
 - `allowed_users` / `access_requests`: acesso como nas outras apps; o admin aprova nas Definições.
 - RLS: quem está em `allowed_users` vê e edita tudo (a casa é partilhada).

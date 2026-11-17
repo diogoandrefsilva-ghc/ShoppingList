@@ -85,6 +85,65 @@ function catEmoji(nome) {
     for (const [re, e] of MAPA) if (re.test(k)) return e;
     return '🏷️';
 }
+/* Símbolo de um artigo, como no SplitBill: sai do NOME por padrões (o primeiro
+   que bater ganha — por isso o específico vem antes do genérico: "batata doce"
+   antes de "batata", "leite condensado" antes de "leite"). Os padrões correm
+   sobre o artKey (minúsculas, sem acentos), logo o `\b` funciona. Quem quiser
+   outro escolhe um emoji no ⋮ do artigo: fica em `catalogo.emoji` e manda em
+   todo o lado. Sem padrão nem escolha, usa-se o da categoria. */
+const ART_ICO = [
+    // fruta
+    [/\bmacas?\b/, '🍎'], [/banana/, '🍌'], [/laranja|tangerina|clementina/, '🍊'], [/\bperas?\b/, '🍐'], [/\blimao|\blimoes|\blimas?\b/, '🍋'],
+    [/morango/, '🍓'], [/\buvas?\b/, '🍇'], [/melancia/, '🍉'], [/\bmelao|\bmeloes/, '🍈'], [/ananas|abacaxi/, '🍍'], [/kiwi/, '🥝'],
+    [/abacate/, '🥑'], [/\bmangas?\b/, '🥭'], [/pessego|nectarina/, '🍑'], [/cereja/, '🍒'], [/\bcoco\b/, '🥥'], [/frutos secos|amendoi|\bnoz(es)?\b|caju|pistacio/, '🥜'],
+    // legumes
+    [/batatas? fritas?|pure de batata|batata palha/, '🍟'], [/batata doce/, '🍠'], [/batata/, '🥔'], [/cebol/, '🧅'], [/\balhos?\b/, '🧄'],
+    [/polpa de tomate|tomate pelado|concentrado de tomate/, '🥫'], [/tomate/, '🍅'], [/alface|espinafre|couve|rucula|agriao/, '🥬'],
+    [/salsa\b|coentro|hortela|louro|oregao|manjericao|alecrim/, '🌿'], [/cenoura/, '🥕'], [/courgette|pepino/, '🥒'], [/brocolo|legumes/, '🥦'],
+    [/cogumelo/, '🍄'], [/pimento/, '🫑'], [/feijao verde|ervilha/, '🫛'], [/milho/, '🌽'], [/beringela/, '🍆'], [/abobora/, '🎃'],
+    // talho, charcutaria, peixe
+    [/frango|\bperu\b/, '🍗'], [/bacon/, '🥓'], [/hamburg/, '🍔'], [/salsicha|chourico|linguica|farinheira|morcela|alheira/, '🌭'],
+    [/fiambre|presunto|paio|mortadela/, '🍖'], [/bife|costelet|febra|entrecosto|picanha|\bcarne|lombo|acem|vazia/, '🥩'],
+    [/camarao|gamba/, '🦐'], [/polvo/, '🐙'], [/\blulas?\b|choco\b/, '🦑'], [/ameijoa|mexilh|ostra/, '🦪'],
+    [/atum|salmao|pescada|bacalhau|dourada|robalo|sardinha|carapau|peixe|douradinho/, '🐟'],
+    // laticínios, padaria
+    [/leite condensado|gelatina|pudim/, '🍮'], [/queijo|requeijao/, '🧀'], [/\bovos?\b/, '🥚'], [/manteiga|margarina/, '🧈'], [/leite|iogurte|natas/, '🥛'],
+    [/pao de forma|tosta/, '🍞'], [/croissant/, '🥐'], [/\bpao\b|\bpaes\b|broa|baguete/, '🥖'], [/wrap|tortilha/, '🌯'], [/\bbolos?\b|tarte/, '🍰'],
+    // mercearia
+    [/gelado/, '🍨'], [/pizza/, '🍕'], [/cereais|aveia|granola/, '🥣'], [/bolacha|biscoito/, '🍪'], [/farinha/, '🌾'], [/esparguete|\bmassas?\b|lasanha/, '🍝'],
+    [/arroz/, '🍚'], [/\bgrao\b|feijao|lentilha/, '🫘'], [/chocolate|cacau/, '🍫'], [/\bmel\b|compota|marmelada/, '🍯'], [/acucar|rebucado|goma/, '🍬'],
+    [/azeitona|azeite|\boleo\b/, '🫒'], [/vinagre|molho de soja/, '🍶'], [/\bsal\b/, '🧂'], [/pimenta|colorau|piri|acafrao|caril/, '🌶️'],
+    [/maionese|mostarda|ketchup|\bmolho|em lata|conserva/, '🥫'],
+    // bebidas
+    [/\bagua/, '💧'], [/sumo|ice tea|nectar/, '🧃'], [/coca|\bcola\b|7up|refriger|fanta|sprite/, '🥤'], [/cerveja|sidra/, '🍺'], [/champanhe|espumante/, '🍾'],
+    [/vinho|sangria/, '🍷'], [/whisky|\bgin\b|\brum\b|vodka|licor/, '🥃'], [/\bcafe\b|capsula/, '☕'], [/\bcha\b|infusao/, '🍵'], [/\bgelo\b/, '🧊'],
+    // higiene e limpeza
+    [/papel higienico|papel de cozinha|rolo de cozinha|guardanapo|lencos/, '🧻'], [/pasta de dentes|escova de dentes/, '🪥'], [/sabonete|sabao/, '🧼'],
+    [/fralda|toalhita/, '👶'], [/champo|gel de banho|desodorizante|creme|cotonete|protetor solar/, '🧴'], [/sacos? d[oe] lixo/, '🗑️'],
+    [/esponja|esfregao/, '🧽'], [/vassoura|esfregona|\bpa\b/, '🧹'], [/detergente|amaciador|pastilhas|lixivia|limpa/, '🫧'],
+    // casa
+    [/papel de aluminio|pelicula|papel vegetal/, '📜'], [/\bvelas?\b/, '🕯️'], [/pilha/, '🔋'], [/lampada/, '💡'], [/carvao|acendalha|fosforo/, '🔥'],
+    [/\bpratos?\b/, '🍽️'], [/talher|garfo|\bfacas?\b|colher/, '🍴'], [/\bcopos?\b/, '🥤'], [/racao|areia do gato|\bgato\b|\bcao\b/, '🐾'],
+    [/remedio|comprimido|benuron|paracetamol|ibuprofeno|farmacia/, '💊'], [/flores|ramo/, '💐'], [/prenda|presente/, '🎁'],
+];
+function emojiLimpo(txt) {
+    const t = String(txt == null ? '' : txt).trim();
+    if (!t) return '';
+    // Um emoji pode ser vários pontos de código colados: corta-se por grafema, não por caracteres.
+    try { return [...new Intl.Segmenter().segment(t)][0].segment.slice(0, 16); } catch (e) { return Array.from(t).slice(0, 2).join(''); }
+}
+function emojiEscolhido(nome) {
+    const k = artKey(nome), c = estado.catalogo.find((x) => x.artigo_key === k);
+    return (c && c.emoji) || '';
+}
+function emojiAuto(nome) {
+    const k = artKey(nome);
+    for (const [re, e] of ART_ICO) if (re.test(k)) return e;
+    const cat = catDe(nome).cat;
+    return cat ? catEmoji(cat.nome) : '🛒';
+}
+function artEmoji(nome) { return emojiEscolhido(nome) || emojiAuto(nome); }
+
 // Índices para adivinhar a categoria de um artigo que ainda não está na memória:
 // pelo nome no singular ("cebola" ↔ "cebolas") e, à falta disso, pela primeira
 // palavra ("batata doce" → onde está a maioria das "batata …").
@@ -422,7 +481,7 @@ async function carregarDados(silencioso) {
             api('perfis?select=email,nome'),
             api('categorias?select=id,nome').catch(() => null),
             api('artigo_categorias?select=artigo_key,categoria_id&limit=5000').catch(() => null),
-            api('catalogo?select=artigo_key,nome&limit=5000').catch(() => null),
+            api('catalogo?select=artigo_key,nome,emoji&limit=5000').catch(() => null),
         ]);
         // Uma escrita que começou entretanto ganha: o que veio do servidor é de antes dela.
         if (_escritas > 0) return;
@@ -590,6 +649,7 @@ function renderArtigo(a) {
     return `<li class="artigo ${a.tratado ? 'feito' : ''} ${a.id < 0 ? 'pendente' : ''}">
         <button class="art-check" onclick="alternarTratado(${a.id})" aria-label="${a.tratado ? 'Voltar a pôr na lista' : 'Marcar como tratado'}: ${esc(a.nome)}">
             <span class="bola"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+            <span class="art-ico" aria-hidden="true">${esc(artEmoji(a.nome))}</span>
             <span class="art-txt"><span class="art-nome">${esc(a.nome)}</span><span class="art-quem">${esc(quem)}</span></span>
         </button>
         ${a.qtd ? `<span class="art-qtd">${esc(a.qtd)}</span>` : ''}
@@ -697,6 +757,9 @@ function abrirArtigo(id) {
             <input id="ea-nome" class="campo" type="text" maxlength="120" value="${esc(a.nome)}" required autocomplete="off">
             <label class="rotulo" for="ea-qtd">Quantidade <span>(opcional)</span></label>
             <input id="ea-qtd" class="campo" type="text" maxlength="30" value="${esc(a.qtd || '')}" placeholder="ex.: 2, 500 g, 1 pacote" autocomplete="off">
+            <label class="rotulo" for="ea-emoji">Símbolo <span>(vazio = automático: ${esc(emojiAuto(a.nome))})</span></label>
+            <input id="ea-emoji" class="campo campo-emoji" type="text" maxlength="16" value="${esc(emojiEscolhido(a.nome))}" placeholder="${esc(emojiAuto(a.nome))}" autocomplete="off" autocorrect="off" aria-describedby="ea-emoji-nota">
+            <p id="ea-emoji-nota" class="nota">Escreve um emoji do teclado para trocar o símbolo deste artigo em todas as listas.</p>
             ${estado.categorias.length ? `<label class="rotulo" for="ea-cat">Categoria ${cat && !certa ? '<span>(palpite — guarda para confirmar)</span>' : ''}</label>
             <select id="ea-cat" class="campo">
                 <option value="">— sem categoria —</option>
@@ -719,9 +782,11 @@ async function guardarArtigo(id) {
     const corpo = { nome, qtd: $('ea-qtd').value.trim() || null, lista_id: Number($('ea-lista').value) };
     const sc = $('ea-cat');
     const catId = sc ? (Number(sc.value) || null) : undefined;
+    const emoji = emojiLimpo($('ea-emoji').value);
     const antes = { ...a };
     Object.assign(a, corpo);
     fecharFolha();
+    if (emoji !== emojiEscolhido(nome)) definirEmoji(nome, emoji);
     // A categoria fica na memória pelo nome (novo, se mudou): vale para todas as listas.
     if (catId !== undefined) definirCategoria(nome, catId);
     render();
@@ -767,6 +832,21 @@ function registarNoCatalogo(nome) {
     if (!k || estado.catalogo.some((c) => c.artigo_key === k)) return;
     estado.catalogo.push({ artigo_key: k, nome });
     api('catalogo?on_conflict=artigo_key', { method: 'POST', body: { artigo_key: k, nome }, prefer: 'resolution=ignore-duplicates,return=minimal' }).catch(() => {});
+}
+async function definirEmoji(nome, emoji) {
+    const k = artKey(nome);
+    if (!k) return;
+    let c = estado.catalogo.find((x) => x.artigo_key === k);
+    const antes = c ? c.emoji : undefined;
+    if (c) c.emoji = emoji || null; else estado.catalogo.push(c = { artigo_key: k, nome, emoji: emoji || null });
+    try {
+        await api('catalogo?on_conflict=artigo_key', { method: 'POST', body: { artigo_key: k, nome: c.nome, emoji: emoji || null }, prefer: 'resolution=merge-duplicates,return=minimal' });
+        guardarCache();
+    } catch (e) {
+        if (antes === undefined) estado.catalogo = estado.catalogo.filter((x) => x !== c); else c.emoji = antes;
+        render();
+        toast('Símbolo não guardado: ' + e.message, true);
+    }
 }
 function abrirCatalogo() {
     _catGerir = false;
@@ -815,9 +895,10 @@ function renderCatalogo() {
         .map((g) => `<h3 class="cg-cat"><span>${g.cat ? catEmoji(g.cat.nome) : '📦'}</span>${esc(g.cat ? g.cat.nome : 'Sem categoria')}</h3>
             <div class="cg-itens">${g.itens.sort((a, b) => a.nome.localeCompare(b.nome, 'pt')).map((c) => {
                 const ja = naLista.has(c.artigo_key), on = !ja && _catSel.has(c.artigo_key);
-                if (_catGerir) return `<button class="cg-item gerir" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-label="Tirar ${esc(c.nome)} dos artigos conhecidos"><i>×</i>${esc(c.nome)}</button>`;
-                if (ja) return `<button class="cg-item ja" disabled><i>✓</i>${esc(c.nome)}<small>na lista</small></button>`;
-                return `<button class="cg-item ${corDe(dest)} ${on ? 'on' : ''}" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-pressed="${on}">${on ? '<i>✓</i>' : ''}${esc(c.nome)}</button>`;
+                const ico = esc(c.emoji || emojiAuto(c.nome));
+                if (_catGerir) return `<button class="cg-item gerir" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-label="Tirar ${esc(c.nome)} dos artigos conhecidos"><i>×</i><span class="cg-e">${ico}</span><span class="cg-n">${esc(c.nome)}</span></button>`;
+                if (ja) return `<button class="cg-item ja" disabled><span class="cg-e">${ico}</span><span class="cg-n">${esc(c.nome)}</span><small>já na lista</small></button>`;
+                return `<button class="cg-item ${corDe(dest)} ${on ? 'on' : ''}" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-pressed="${on}">${on ? '<i>✓</i>' : ''}<span class="cg-e">${ico}</span><span class="cg-n">${esc(c.nome)}</span></button>`;
             }).join('')}</div>`).join('');
     const escrito = $('cg-busca').value.trim();
     if (escrito && !estado.catalogo.some((c) => c.artigo_key === busca)) {
