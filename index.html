@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Compras</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Compras">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1F3A2E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Splash de arranque -->
+<div id="splash">
+    <div class="splash-logo">🛒</div>
+    <div class="splash-nome">Compras</div>
+    <div class="spinner"></div>
+</div>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="page-login" class="ecra" hidden>
+    <div class="login-topo">
+        <div class="login-logo">🛒</div>
+        <h1>Compras</h1>
+        <p>As listas lá de casa</p>
+    </div>
+    <div class="login-corpo">
+        <div class="cartao login-cartao">
+            <button class="btn btn-google" onclick="loginGoogle()">
+                <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.1 0 5.6 1.1 7.6 2.9l5.6-5.6C33.9 3.5 29.3 1.5 24 1.5 14.9 1.5 7.2 7 3.8 14.8l6.5 5C11.9 13.6 17.4 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.4c-.5 2.8-2.1 5.2-4.5 6.8l7 5.4c4.1-3.8 6.5-9.4 6.5-16.2z"/><path fill="#FBBC05" d="M10.3 28.8c-.5-1.5-.8-3.1-.8-4.8s.3-3.3.8-4.8l-6.5-5C2.4 17 1.5 20.4 1.5 24s.9 7 2.3 9.8l6.5-5z"/><path fill="#34A853" d="M24 46.5c5.3 0 9.8-1.8 13.1-4.8l-7-5.4c-1.8 1.2-4.1 2-6.8 2-6.6 0-12.1-4.1-14-9.8l-6.5 5C7.2 41 14.9 46.5 24 46.5z"/></svg>
+                Continuar com Google
+            </button>
+            <div class="divisor"><span>ou entra com email</span></div>
+            <form onsubmit="loginEmail(); return false;">
+                <input id="login-email" class="campo" type="email" placeholder="Email" autocomplete="email" required>
+                <input id="login-password" class="campo" type="password" placeholder="Password" autocomplete="current-password" required>
+                <button class="btn btn-primario" type="submit">Entrar</button>
+            </form>
+            <button class="btn btn-contorno" onclick="registarEmail()">Criar conta</button>
+            <div id="login-status" class="estado" hidden></div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ SEM ACESSO ═══ -->
+<div id="page-sem-acesso" class="ecra ecra-centro" hidden>
+    <div class="cartao sem-acesso">
+        <div class="grande">🔒</div>
+        <h2>Acesso não autorizado</h2>
+        <p id="sem-acesso-email"></p>
+        <button id="btn-solicitar" class="btn btn-primario" onclick="solicitarAcesso()">Solicitar acesso</button>
+        <button id="btn-verificar" class="btn btn-primario" onclick="verificarAcesso()" hidden>Verificar acesso</button>
+        <div id="solicitar-status" class="estado" hidden></div>
+        <button class="btn btn-contorno" onclick="logout()">Sair</button>
+    </div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="app" hidden>
+    <header class="topo">
+        <div class="topo-linha">
+            <h1>Compras</h1>
+            <span id="sync" class="sync" aria-live="polite"></span>
+            <button class="icone-btn" onclick="abrirDefinicoes()" aria-label="Definições">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+                <span id="badge-pedidos" class="badge" hidden></span>
+            </button>
+        </div>
+        <nav id="chips" class="chips" aria-label="Listas"></nav>
+    </header>
+
+    <main id="conteudo"></main>
+
+    <!-- Barra de adicionar, sempre à mão -->
+    <form id="barra-add" class="barra-add" onsubmit="adicionarDaBarra(); return false;">
+        <button type="button" id="add-destino" class="add-destino" onclick="abrirEscolhaDestino()" aria-label="Lista de destino"></button>
+        <input id="add-nome" type="text" placeholder="Adicionar artigo…" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="120" list="sugestoes">
+        <datalist id="sugestoes"></datalist>
+        <button type="submit" class="add-ok" aria-label="Adicionar">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+    </form>
+</div>
+
+<!-- Folha (bottom sheet) genérica -->
+<div id="folha-fundo" class="folha-fundo" hidden onclick="if(event.target===this)fecharFolha()">
+    <div class="folha" role="dialog" aria-modal="true">
+        <div class="folha-topo">
+            <h2 id="folha-titulo"></h2>
+            <button class="icone-btn" onclick="fecharFolha()" aria-label="Fechar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+        </div>
+        <div id="folha-corpo" class="folha-corpo"></div>
+    </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
