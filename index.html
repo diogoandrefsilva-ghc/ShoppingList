@@ -80,8 +80,10 @@
     <!-- Barra de adicionar, sempre à mão -->
     <form id="barra-add" class="barra-add" onsubmit="adicionarDaBarra(); return false;">
         <button type="button" id="add-destino" class="add-destino" onclick="abrirEscolhaDestino()" aria-label="Lista de destino"></button>
-        <input id="add-nome" type="text" placeholder="Adicionar artigo…" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="120" list="sugestoes">
-        <datalist id="sugestoes"></datalist>
+        <input id="add-nome" type="text" placeholder="Adicionar artigo…" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" maxlength="120" autocorrect="off">
+        <button type="button" class="add-cat" onclick="abrirCatalogo()" aria-label="Escolher de artigos conhecidos">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>
+        </button>
         <button type="submit" class="add-ok" aria-label="Adicionar">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         </button>

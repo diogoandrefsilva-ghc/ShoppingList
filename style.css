@@ -237,6 +237,36 @@ input, select, textarea { font: inherit; font-size: 16px; color: inherit; }
     background: var(--acento); color: var(--acento-tinta); display: flex; align-items: center; justify-content: center;
 }
 
+/* ── Catálogo (adicionar sem escrever) ── */
+.add-cat {
+    flex: none; width: 48px; height: 48px; border-radius: 14px; border: 1.5px solid var(--linha);
+    background: var(--cartao); color: var(--tinta-2); display: flex; align-items: center; justify-content: center;
+}
+.cg-destinos { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.cg-destinos::-webkit-scrollbar { display: none; }
+.cg-dest {
+    flex: none; min-height: 40px; padding: 7px 14px; border-radius: 999px; border: 1.5px solid var(--linha);
+    background: var(--cartao); font-size: 14.5px; font-weight: 600; white-space: nowrap;
+}
+.cg-dest.ativo { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, var(--cartao)); color: var(--c); }
+.cg-busca { margin-top: 10px; }
+.cg-cat {
+    display: flex; align-items: center; gap: 7px; margin: 18px 2px 8px;
+    font-size: 12.5px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; color: var(--tinta-2);
+}
+.cg-cat span { font-size: 16px; }
+.cg-itens { display: flex; flex-wrap: wrap; gap: 8px; }
+.cg-item {
+    display: inline-flex; align-items: center; gap: 6px; min-height: 42px; max-width: 100%; padding: 8px 14px;
+    border-radius: 12px; border: 1.5px solid var(--linha); background: var(--cartao);
+    font-size: 15.5px; text-align: left; overflow-wrap: anywhere;
+}
+.cg-item i { font-style: normal; font-weight: 800; }
+.cg-item.on { border-color: var(--c); background: var(--c); color: #fff; font-weight: 600; }
+.cg-item.gerir { border-style: dashed; color: var(--tinta-2); }
+.cg-item.gerir i { color: var(--perigo); }
+.cg-fundo { margin-top: 18px; }
+
 /* ── Folha (bottom sheet) ── */
 .folha-fundo {
     position: fixed; inset: 0; z-index: 100; background: rgba(10, 16, 13, .5);

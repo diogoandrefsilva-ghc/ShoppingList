@@ -2,7 +2,7 @@
    Compras — listas de compras partilhadas lá de casa.
    Sem build, sem dependências. Supabase por REST (schema `shoppinglist`).
    Secções: Utilitários · Supabase (sessão, fetch) · Login & acesso ·
-   Categorias · Dados (carregar, refresco) · Render · Artigos · Listas · Folhas ·
+   Categorias · Dados (carregar, refresco) · Render · Artigos · Catálogo · Listas · Folhas ·
    Definições & admin · Arranque
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -25,6 +25,7 @@ const estado = {
     pedidos: [],       // pedidos de acesso (só admin)
     categorias: [],    // dicionário [{id,nome}], por ordem alfabética
     artCats: {},       // memória artigo→categoria: artKey(nome) → id da categoria
+    catalogo: [],      // artigos conhecidos [{artigo_key,nome}] — a folha "Adicionar artigos"
 };
 
 /* ── UTILITÁRIOS ─────────────────────────────── */
@@ -393,7 +394,7 @@ function guardarCache() {
     try {
         localStorage.setItem(CACHE_KEY, JSON.stringify({
             listas: estado.listas, artigos: estado.artigos.filter((a) => a.id > 0), perfis: estado.perfis,
-            destino: estado.destino, filtro: estado.filtro, categorias: estado.categorias, artCats: estado.artCats
+            destino: estado.destino, filtro: estado.filtro, categorias: estado.categorias, artCats: estado.artCats, catalogo: estado.catalogo
         }));
     } catch (e) {}
 }
@@ -403,7 +404,7 @@ function carregarCache() {
         if (!c || !Array.isArray(c.listas)) return false;
         estado.listas = c.listas; estado.artigos = c.artigos || []; estado.perfis = c.perfis || {};
         estado.destino = c.destino || null; estado.filtro = c.filtro || 'tudo';
-        estado.categorias = c.categorias || []; estado.artCats = c.artCats || {}; _catIdx = null;
+        estado.categorias = c.categorias || []; estado.artCats = c.artCats || {}; estado.catalogo = c.catalogo || []; _catIdx = null;
         return true;
     } catch (e) { return false; }
 }
@@ -415,12 +416,13 @@ async function carregarDados(silencioso) {
     _aCarregar = true;
     try {
         // As categorias são tolerantes: se falharem, a lista aparece na mesma (sem grupos).
-        const [listas, artigos, perfis, cats, artCats] = await Promise.all([
+        const [listas, artigos, perfis, cats, artCats, catalogo] = await Promise.all([
             api('listas?select=*&order=fixa.desc,criado_em.asc'),
             api('artigos?select=*&order=criado_em.asc'),
             api('perfis?select=email,nome'),
             api('categorias?select=id,nome').catch(() => null),
             api('artigo_categorias?select=artigo_key,categoria_id&limit=5000').catch(() => null),
+            api('catalogo?select=artigo_key,nome&limit=5000').catch(() => null),
         ]);
         // Uma escrita que começou entretanto ganha: o que veio do servidor é de antes dela.
         if (_escritas > 0) return;
@@ -434,9 +436,11 @@ async function carregarDados(silencioso) {
             artCats.forEach((r) => { estado.artCats[r.artigo_key] = r.categoria_id; });
             _catIdx = null;
         }
+        if (catalogo) estado.catalogo = catalogo;
         sinalSync('');
         guardarCache();
         render();
+        if (_catAberto) renderCatalogo();
     } catch (e) {
         sinalSync('sem ligação');
         if (!silencioso) toast('Não foi possível carregar: ' + e.message, true);
@@ -515,17 +519,6 @@ function render() {
         $('add-nome').placeholder = `Adicionar a ${d.nome}…`;
     }
     $('barra-add').hidden = !d;
-
-    // Sugestões: nomes já usados (os tratados são bons candidatos a voltar à lista)
-    const vistos = new Set();
-    let sug = '';
-    for (let i = estado.artigos.length - 1; i >= 0 && vistos.size < 60; i--) {
-        const n = estado.artigos[i].nome, k = n.toLowerCase();
-        if (vistos.has(k)) continue;
-        vistos.add(k);
-        sug += `<option value="${esc(n)}">`;
-    }
-    $('sugestoes').innerHTML = sug;
 
     const bp = $('badge-pedidos');
     bp.hidden = !estado.pedidos.length;
@@ -625,7 +618,8 @@ async function adicionarDaBarra() {
     const inp = $('add-nome');
     const txt = inp.value.trim();
     const lista = destinoAtual();
-    if (!txt || !lista) return;
+    if (!lista) return;
+    if (!txt) { abrirCatalogo(); return; }
     inp.value = '';
     inp.focus();
     const { nome, qtd } = separarQtd(txt);
@@ -660,6 +654,7 @@ async function adicionarArtigo(listaId, nome, qtd) {
     try {
         const r = await api('artigos', { method: 'POST', body: { lista_id: listaId, nome, qtd: qtd || null }, prefer: 'return=representation' });
         Object.assign(temp, r[0]);
+        registarNoCatalogo(nome);
         guardarCache();
         render();
     } catch (e) {
@@ -757,6 +752,112 @@ async function limparTratados(listaId) {
         await api(`artigos?lista_id=eq.${listaId}&tratado=is.true`, { method: 'DELETE', prefer: 'return=minimal' });
         guardarCache();
     } catch (e) { estado.artigos = antes; render(); toast('Não foi limpo: ' + e.message, true); }
+}
+
+/* ── CATÁLOGO: adicionar sem escrever ────────── */
+// Folha com os artigos conhecidos, por categoria: um toque põe o artigo na
+// lista de destino, outro toque tira-o (se ainda estiver por tratar). O
+// catálogo cresce sozinho — tudo o que se escreve na barra entra cá.
+let _catAberto = false, _catGerir = false;
+
+function registarNoCatalogo(nome) {
+    const k = artKey(nome);
+    if (!k || estado.catalogo.some((c) => c.artigo_key === k)) return;
+    estado.catalogo.push({ artigo_key: k, nome });
+    api('catalogo?on_conflict=artigo_key', { method: 'POST', body: { artigo_key: k, nome }, prefer: 'resolution=ignore-duplicates,return=minimal' }).catch(() => {});
+}
+function abrirCatalogo() {
+    _catGerir = false;
+    abrirFolha('Adicionar artigos', `
+        <div id="cg-destinos" class="cg-destinos"></div>
+        <input id="cg-busca" class="campo cg-busca" type="search" placeholder="Procurar…" autocomplete="off" autocapitalize="off" oninput="renderCatalogo()" aria-label="Procurar artigo">
+        <div id="cg-grupos"></div>
+        <div class="cg-fundo">
+            <button class="btn btn-primario" onclick="fecharFolha()">Feito</button>
+            <button id="cg-gerir" class="btn btn-contorno" onclick="alternarGerirCatalogo()"></button>
+        </div>`);
+    _catAberto = true;
+    renderCatalogo();
+}
+function alternarGerirCatalogo() { _catGerir = !_catGerir; renderCatalogo(); }
+function escolherDestinoCatalogo(id) {
+    estado.destino = id;
+    if (estado.filtro !== 'tudo') estado.filtro = id;
+    guardarCache();
+    render();
+    renderCatalogo();
+}
+function renderCatalogo() {
+    const gr = $('cg-grupos');
+    if (!gr || $('folha-fundo').hidden) { _catAberto = false; return; }
+    const dest = destinoAtual();
+    if (!dest) return;
+    const abertas = listasAbertas();
+    $('cg-destinos').innerHTML = abertas.length > 1
+        ? abertas.map((l) => `<button class="cg-dest ${corDe(l)} ${l.id === dest.id ? 'ativo' : ''}" onclick="escolherDestinoCatalogo(${l.id})">${esc(l.emoji)} ${esc(l.nome)}</button>`).join('')
+        : `<p class="nota topo-nota">Toca num artigo para o pôr em ${esc(dest.emoji)} ${esc(dest.nome)}.</p>`;
+    $('cg-gerir').textContent = _catGerir ? 'Voltar a adicionar' : 'Tirar artigos desta folha';
+
+    const naLista = new Set(artigosDe(dest.id).filter((a) => !a.tratado).map((a) => artKey(a.nome)));
+    const busca = artKey($('cg-busca').value);
+    const grupos = new Map();
+    estado.catalogo.forEach((c) => {
+        if (busca && !c.artigo_key.includes(busca)) return;
+        const cat = catDe(c.nome).cat, k = cat ? cat.id : 0;
+        if (!grupos.has(k)) grupos.set(k, { cat, itens: [] });
+        grupos.get(k).itens.push(c);
+    });
+    let h = [...grupos.values()]
+        .sort((x, y) => (!x.cat) - (!y.cat) || (x.cat && y.cat ? x.cat.nome.localeCompare(y.cat.nome, 'pt') : 0))
+        .map((g) => `<h3 class="cg-cat"><span>${g.cat ? catEmoji(g.cat.nome) : '📦'}</span>${esc(g.cat ? g.cat.nome : 'Sem categoria')}</h3>
+            <div class="cg-itens">${g.itens.sort((a, b) => a.nome.localeCompare(b.nome, 'pt')).map((c) => {
+                const on = naLista.has(c.artigo_key);
+                return `<button class="cg-item ${corDe(dest)} ${on && !_catGerir ? 'on' : ''} ${_catGerir ? 'gerir' : ''}" data-k="${esc(c.artigo_key)}" onclick="tocarCatalogo(this.dataset.k)" aria-pressed="${on}">${_catGerir ? '<i>×</i>' : (on ? '<i>✓</i>' : '')}${esc(c.nome)}</button>`;
+            }).join('')}</div>`).join('');
+    const escrito = $('cg-busca').value.trim();
+    if (escrito && !estado.catalogo.some((c) => c.artigo_key === busca)) {
+        h += `<button class="btn btn-contorno" onclick="adicionarDaBusca()">Adicionar «${esc(escrito)}»</button>`;
+    } else if (!h) {
+        h = '<p class="nota">Ainda não há artigos conhecidos. Escreve na barra de baixo e eles aparecem aqui.</p>';
+    }
+    gr.innerHTML = h;
+}
+async function tocarCatalogo(k) {
+    const c = estado.catalogo.find((x) => x.artigo_key === k);
+    const dest = destinoAtual();
+    if (!c || !dest) return;
+    if (_catGerir) {
+        estado.catalogo = estado.catalogo.filter((x) => x !== c);
+        renderCatalogo();
+        try { await api(`catalogo?artigo_key=eq.${encodeURIComponent(k)}`, { method: 'DELETE', prefer: 'return=minimal' }); guardarCache(); }
+        catch (e) { estado.catalogo.push(c); renderCatalogo(); toast('Não foi retirado: ' + e.message, true); }
+        return;
+    }
+    const naLista = artigosDe(dest.id).find((a) => !a.tratado && artKey(a.nome) === k);
+    if (naLista) {
+        if (naLista.id < 0) return;            // ainda a gravar
+        const antes = estado.artigos.slice();
+        estado.artigos = estado.artigos.filter((a) => a !== naLista);
+        render(); renderCatalogo();
+        try { await api(`artigos?id=eq.${naLista.id}`, { method: 'DELETE', prefer: 'return=minimal' }); guardarCache(); }
+        catch (e) { estado.artigos = antes; render(); renderCatalogo(); toast('Não foi retirado: ' + e.message, true); }
+        return;
+    }
+    const p = adicionarArtigo(dest.id, c.nome, null);
+    renderCatalogo();
+    await p;
+    renderCatalogo();
+}
+async function adicionarDaBusca() {
+    const inp = $('cg-busca'), dest = destinoAtual();
+    const txt = inp.value.trim();
+    if (!txt || !dest) return;
+    inp.value = '';
+    const { nome, qtd } = separarQtd(txt);
+    const p = adicionarArtigo(dest.id, maiuscula(nome).slice(0, 120), qtd ? qtd.slice(0, 30) : null);
+    renderCatalogo();
+    await p;
+    renderCatalogo();
 }
 
 /* ── LISTAS ──────────────────────────────────── */
@@ -897,6 +998,7 @@ function escolherDestino(id) {
 /* ── FOLHAS (bottom sheet) e confirmação ─────── */
 let _confirmar = null;
 function abrirFolha(titulo, html) {
+    _catAberto = false;
     if (_confirmar) { _confirmar(false); _confirmar = null; }
     $('folha-titulo').textContent = titulo;
     $('folha-corpo').innerHTML = html;
@@ -904,6 +1006,7 @@ function abrirFolha(titulo, html) {
     document.body.classList.add('com-folha');
 }
 function fecharFolha() {
+    _catAberto = false;
     $('folha-fundo').hidden = true;
     document.body.classList.remove('com-folha');
     if (_confirmar) { const f = _confirmar; _confirmar = null; f(false); }

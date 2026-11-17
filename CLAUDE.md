@@ -10,7 +10,7 @@ no mesmo projeto das outras apps). PWA, sem zoom.
   Categorias · Login & acesso · Dados · Render · Artigos · Listas · Folhas · Definições & admin · Arranque.
 - `style.css` — todo o CSS; cores em variáveis (`:root`), modo escuro automático.
 - `sw.js` — service worker (rede primeiro, cache sem rede). **Sobe `CACHE_VERSION`** quando mudares a app.
-- `db/schema.sql` — schema base; `db/categorias.sql` — categorias de artigos. Idempotentes e
+- `db/schema.sql` — schema base; `db/categorias.sql` — categorias de artigos; `db/catalogo.sql` — artigos conhecidos. Idempotentes e
   **sem DROP/DELETE/REVOKE** (o Supabase não deixa passar migrações destrutivas).
 
 ## Modelo
@@ -24,6 +24,10 @@ no mesmo projeto das outras apps). PWA, sem zoom.
   lê-se da memória pelo nome normalizado (`artKey`) a cada render (`catDe`), com palpite
   pelo singular / primeira palavra quando o nome ainda não é conhecido. Muda-se no ⋮ do
   artigo (qualquer pessoa); o dicionário gere-o o admin nas Definições.
+- `catalogo`: artigos conhecidos (nome com acentos, chave `artKey`) para a folha **Adicionar
+  artigos** (botão de grelha na barra): um toque põe na lista, outro tira. Cresce sozinho com
+  o que se escreve (`registarNoCatalogo`); o modo "Tirar artigos desta folha" apaga do catálogo.
+  Não há `<datalist>` de sugestões de propósito — no iOS abria um balão a cada artigo.
 - `perfis`: email → nome que aparece ao lado dos artigos.
 - `allowed_users` / `access_requests`: acesso como nas outras apps; o admin aprova nas Definições.
 - RLS: quem está em `allowed_users` vê e edita tudo (a casa é partilhada).
